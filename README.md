@@ -24,7 +24,7 @@ Assignment information will be updated as course progresses.
 
 |Assignment|Description|Tools|
 |---|---|---|
-
+|Assignment 1|Develop basic working experience with R programming, data exploration, reproducible reporting, and scalable data management.|R, RStudio|
 ## Technology
 R <br>
 RStudio <br>
