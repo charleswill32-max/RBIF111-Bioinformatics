@@ -1,0 +1,534 @@
+---
+title: "Week 1 Homework"
+author: "Charles-William Ruel"
+date: "03NOV26"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+  pdf_document:
+    toc: true
+vignette: >
+    %\VignetteIndexEntry{Text}
+    %\usepackage[utf8]{inputenc}
+    %\VignetteEngine{knitr::rmarkdown}
+fontsize: 15pt
+editor_options: 
+  chunk_output_type: console  
+---
+
+# Homework 1
+The goal for this homework is to gain working experience with R programming, 
+data exploration, reproducible reporting, and scalable data management.
+
+## Prelude
+Note that this .Rmd file should work fine, as long as the metadata file for GEO accession code: GSE116250. This can be downloaded using the following link: [Link to metadata Download](https://www.ncbi.nlm.nih.gov/Traces/study/?acc=PRJNA477855&o=acc_s%3Aa). This file should be in the same directory as this .Rmd file. 
+
+
+## Question 1
+The code below shows the function I wrote to mimic the built in R mean() 
+function.
+``` {r}
+meanFunction <- function(vect, dropNA=FALSE){
+  
+  if (dropNA){
+    vect <- vect[!is.na(vect)]
+  }
+  len <- length(vect)
+  sum <- 0
+  for (i in 1:len){
+    sum <- sum + vect[i]
+  }
+  meanVal <- sum/len
+  return(meanVal)
+}
+```
+### Question 1A
+Creating my vector:
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+x <- c(10, 15, 20, 25, 30, 35)
+```
+Using the R mean function:
+```{r name1, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+mean(x)
+```
+Using my written function:
+```{r name2, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+meanFunction(x)
+```
+As we can see in the example above, when calling the R function on my vector of choice it produces the same result as my function.
+
+### Question 1B
+The function can remove NA values by passing "TRUE" to the second arg of the function.
+If we add NA values to my vector above let's compare the default results to NA removed.
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+x <- c(10, 15, 20, NA, 25, 30, 35, NA)
+```
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+meanFunction(x)
+```
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+meanFunction(x, TRUE)
+```
+Now the R mean function:
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+mean(x, na.rm = TRUE)
+```
+As we can see the function I have written and the R function both return a value of 22.5,
+which is expected. 
+I expect both of these functions to return the same value, as they both perform the
+same mathematical operation of calculating the summation of the vector contents and dividing
+by length. Both of these functions will result in an NA if NA not removed as summation will equal "NA".
+
+### Question 1C
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+library(DBI)
+library(duckdb)
+library(repoquet)
+config_path <- "~/Documents/Brandeis/rbif111/homework/database/repoquet_public_example/repository_config.R"
+cfg <- load_repository_config(config_path)
+temp_dir <- file.path(cfg$FormattedDBPath, "duckdb_temp")
+dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
+con <- open_duckdb( FormattedDBPath = cfg$FormattedDBPath, DBName = cfg$DBName, TempDirPath = temp_dir, GB = cfg$DuckDB_GB, ReadOnly = TRUE)
+
+uci_tables <- DBI::dbListTables(con)
+uci_tables <- sort(grep("^UCI", uci_tables, value = TRUE, ignore.case = TRUE))
+head(uci_tables, 30)
+table <- uci_tables[23]
+DBI::dbGetQuery(con, paste0("DESCRIBE ", table))
+```
+As we can see in the output above, the table exists and the column "CHOL" contains "DOUBLE" data type. The "DOUBLE" data type is a numeric value. Let's now extract that column and find the mean.
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+data <- DBI::dbGetQuery(con,paste("SELECT * FROM", table))
+chol <- data[,5]
+mean(chol)
+meanFunction(chol)
+```
+
+### Question 1D
+Here I will perform a t-test on cholesterol levels (col "CHOL") between men and women (col "SEX"). Here my null hypothesis is that there is no difference between cholesterol levels between men and women within this heart failure data, and my alternative hypothesis is that there is a difference between cholesterol levels between men and women within this heart failure data.
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+sex <- data[,2]
+t.test(chol ~ sex, data = data)
+```
+This t-test showed that there is a difference between cholesteral levels between men and women in this group as the p-value is `r t.test(chol ~ sex, data = data)$p.value`, thus the null hypothesis can be rejected. This test had a t-value of: `r t.test(chol~sex, data=data)$statistic`, and `r t.test(chol~sex, data=data)$parameter` degrees of freedom. 
+
+## Question 2
+
+Loading in the data download function:
+``` {r}
+GEODataDownload <- function(DS, gpl, gsm, PlateAnnotInfo, GenerateMetaData, Technology, CountsFile = NULL){
+  library(DESeq2); library(limma); library(data.table)
+  if(Technology == "Array"){
+    gset <- getGEO(DS, GSEMatrix = TRUE, getGPL = FALSE)
+    if(length(gset) == 1) {
+      idx <- 1
+    } else {
+      idx <- grep(gpl, attr(gset, "names"))
+    }
+    
+    if(length(idx) != 1) {
+      stop("Could not uniquely identify the requested GPL platform.")
+    }
+    
+    gset <- gset[[idx]]
+    print(gset)
+    ex <- SummarizedExperiment::assay(gset)
+    Pdat <- as.data.frame(SummarizedExperiment::colData(gset))
+    print(Pdat)
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up raw names ####
+    sml <- c()
+    for(i in 1:nchar(gsms)){ sml[i] <- substr(gsms,i,i)}
+    qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+    LogC <- (qx[5] > 100) ||
+      (qx[6]-qx[1] > 50 && qx[2] > 0) ||
+      (qx[2] > 0 && qx[2] < 1 && qx[4] < 2)
+    if(LogC){ ex[which(ex <= 0)] <- NaN
+    ex <- log2(ex) }
+    print(ex)
+    sml <- paste("G", sml, sep="")
+    f1 <- as.factor(sml)
+    design <- model.matrix(~f1 + 0)
+    colnames(design) <- levels(f1)
+    fit <- lmFit(ex, design)
+    cont.matrix <- makeContrasts(G1-G0, levels = design)
+    fit2 <- contrasts.fit(fit, cont.matrix)
+    fit2 <- eBayes(fit2, 0.01)
+    tT <- topTable(fit2, adjust="fdr", sort.by = "B", number = 25000000000)
+    #### subset ####
+    tT$ID <- rownames(tT)
+    ex2 <- data.table(subset(tT, select=c("ID", "logFC", "P.Value", "adj.P.Val")))
+    ex2$ID <- as.character(ex2$ID)
+    #### annotate with gene names ####
+    plat <- PlateAnnotInfo[GPLID == gpl,][,!"GPLID", with = FALSE]
+    if(nrow(plat) == 0){ print(paste("There is no annotation information available for", gpl)) }
+    plat$ID <- as.character(plat$ID)
+    plat <- plat[!duplicated(plat$ID),]
+    ex2 <- merge(plat, ex2, by = "ID")
+    ex2$ID <- as.character(ex2$ID)
+    exraw <- data.table(ex)
+    exraw$ID <- as.character(rownames(ex))
+    #### annotate raw data with gene names ####
+    ex2 <- merge(ex2, exraw, by = "ID")
+    #### Generate Meta Data ####
+    #### Add Meta data ####
+    return(list(Data = ex2, MetaData = Pdat))
+  }
+  
+  if(Technology == "RNAseq"){
+    ACC <- paste("acc=", DS, sep = "")
+    file <- paste("file=", DS, "_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep = "")
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up DEG names ####
+    urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+    path <- paste(urld, ACC, file, sep="&");
+    if(is.null(CountsFile)) CountsFile <- path
+    cts <- data.table::fread(CountsFile, header=T)
+    tbl <- as.matrix(cts, rownames="GeneID")
+    exraw <- tbl
+    #### Gene annotation from AnnotationHub (GEO GeneIDs are NCBI Entrez IDs) ####
+    library(AnnotationHub)
+    ah <- AnnotationHub()
+    orgdbs <- query(ah, c("OrgDb", "Homo sapiens"))
+    orgdb <- orgdbs[[tail(names(orgdbs), 1)]]
+    annot <- suppressMessages(AnnotationDbi::select(orgdb, keys = rownames(tbl), keytype = "ENTREZID", columns = c("SYMBOL", "GENENAME")))
+    annot <- annot[!duplicated(annot$ENTREZID), ]
+    annot <- data.frame(GeneID = as.integer(annot$ENTREZID), Symbol = annot$SYMBOL, Description = annot$GENENAME)
+    rownames(annot) <- annot$GeneID
+    sml <- strsplit(gsms, split="")[[1]]
+    sel <- which(sml != "X")
+    sml <- sml[sel]
+    tbl <- tbl[ ,sel]
+    gs <- factor(sml)
+    groups <- make.names(c("Ctrl", "Tx"))
+    levels(gs) <- groups
+    sample_info <- data.frame(Group = gs, row.names = colnames(tbl))
+    keep <- rowSums( tbl >= 10 ) >= min(table(gs))
+    tbl <- tbl[keep, ]
+    ds <- DESeqDataSetFromMatrix(countData=tbl, colData=sample_info, design= ~Group)
+    ds <- DESeq(ds, test="Wald", sfType="poscount")
+    r <- results(ds, contrast=c("Group", groups[2], groups[1]), alpha=0.05, pAdjustMethod ="fdr")
+    tT <- r[order(r$padj)[1:length(r$padj)],]
+    tT <- merge(as.data.frame(tT), annot, by=0, sort=F)
+    tT <- subset(tT, select=c("GeneID","padj","pvalue","lfcSE","stat","log2FoldChange","baseMean","Symbol","Description"))
+    #### subset ####
+    ex2 <- data.table(subset(tT, select=c("GeneID", "Symbol", "Description", "log2FoldChange", "pvalue", "padj")))
+    #### Adjust column names ####
+    setnames(ex2, c("GeneID", "Symbol", "Description"), c("ENTREZID", "SYMBOL", "GENENAME"))
+    #### Get Raw data ####
+    GeneID <- as.integer(rownames(exraw))
+    exraw <- as.data.table(exraw)
+    #### Update column names ####
+    exraw$ENTREZID <- GeneID
+    #### merge FC and raw data together ####
+    mer <- merge(ex2, exraw, by = "ENTREZID")
+    return(mer)
+  }
+}
+
+significance <- function(padj, foldChange){
+  if (padj < 0.05 & abs(foldChange) > 1) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+```
+Downloading RNAseq data of left ventricle failure in human hearts (GSE116250) (1).
+
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=TRUE}
+RNAseq <- GEODataDownload("GSE116250", "GPL16791","0000000000000011111111111111111111111111111111111111111111111111","Only needed if the data was generated using MicroArrays","Only needed if the data was generated using MicroArrays","RNAseq")
+```
+
+### Question 2A
+The file will now be saved as a csv file. 
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+write.csv(RNAseq, file = "RNAseq.csv", row.names = FALSE)
+```
+
+Now lets reload that csv file.
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+savedFile <- read.csv(file = "RNAseq.csv")
+```
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+dim(RNAseq)
+dim(savedFile)
+```
+As we can see above, the dimensions of the two datatables are identical, even after saving the file and reloading it.
+
+### Question 2B
+We can add in a column to the dataframe called "Subset_Comparison"
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+savedFile$Subset_Comparison <- "Treatment-Control"
+library(DT)
+datatable(head(as.data.frame(savedFile),10), filter = 'top', options = list(pageLength = 10, scrollX = TRUE, scrollY = "400px", autoWidth = TRUE))
+```
+
+### Question 2C
+Applying the mean function I wrote to the raw expression levels for each sample.
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+colAvg <- apply(savedFile[, c(7:64)], MARGIN = 2, meanFunction)
+colAvg <- data.frame(
+  sample = names(colAvg),
+  average = as.numeric(colAvg)
+)
+library(ggplot2)
+ggplot(colAvg, aes(x = average)) + geom_histogram()
+ggplot(colAvg, aes(x = average)) + geom_boxplot()
+ggplot(colAvg, aes(x = "", y= average)) + geom_jitter(width=0.1)
+ggplot(colAvg, aes(x = sample, y = average)) + geom_point() + theme(axis.text.x = element_text(angle = 90))
+colAvg <- colAvg[order(colAvg$average),]
+ggplot(colAvg, aes(x = sample, y = average)) + geom_point() + theme(axis.text.x = element_text(angle = 90))
+
+```
+
+### Question 2D
+Applying the mean function to the raw expression levels for each gene
+
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+rowAvg <- apply(savedFile[,c(7:64)], MARGIN = 1, meanFunction)
+rowAvg <- data.frame(
+  gene = savedFile[,2],
+  average = as.numeric(rowAvg)
+)
+
+rowAvg$log10AvgExp <- log10(rowAvg$average)
+
+ggplot(rowAvg, aes(x=log10AvgExp)) + geom_histogram()
+ggplot(rowAvg, aes(x = log10AvgExp)) + geom_boxplot()
+rowAvg <- rowAvg[order(rowAvg$average),]
+datatable(as.data.frame(rowAvg), filter = 'top', options = list(pageLength = 10, scrollX = TRUE, scrollY = "400px", autoWidth = TRUE))
+```
+
+Note that for here, some of the genes had such high expression I was getting "smushing" of the graphs to the left. I fixed this by plotting Log10 of average expression. 
+
+### Question 2E
+The average expression is already sorted in ascending order, so to find the 5 least and 5 most expressed genes we can take the first 5 and last 5 elements of the table. 
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+topFive <- tail(rowAvg, 5)
+bottomFive <- head(rowAvg, 5)
+```
+The top 5 most expressed genes are `r paste(topFive$gene, "(", round(topFive$average, 2), ")", collapse = ", ")`, and the 5 least expressed genes are `r paste(bottomFive$gene, "(", round(bottomFive$average, 2), ")", collapse = ", ")`.
+
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+topFiveNames <- topFive$gene
+bottomFiveNames <- bottomFive$gene
+
+topFiveIndex <- match(topFiveNames, savedFile$SYMBOL)
+bottomFiveIndex <- match(bottomFiveNames, savedFile$SYMBOL)
+
+index <- c(topFiveIndex, bottomFiveIndex)
+
+tenGenes <- savedFile[index, ]
+
+expression <- as.data.frame(t(tenGenes[,c(7:64)]))
+colnames(expression) <- tenGenes$SYMBOL
+
+boxplot(
+  expression,
+  main = "Expression Distribution of Top 10 Genes",
+  xlab = "Genes",
+  ylab = "Expression Level",
+  las = 2
+)
+```
+Note that I did use the help of AI (ChatGPT) to help format my boxplot here (2). I was unable to get the boxplot to work with ggplot2 as I kept getting an error with aes. I asked AI to help format my code to produce a box plot where columns contained genes with expression levels for "x" patients, I submitted the example I was trying to use with ggplot `ggplot(expression, aes(x=colnames(expression))) + geom_boxplot()`, which kept getting an error. I instead used the suggested code by chatgpt that used base R instead of the ggplot library. 
+
+### Question 2F
+
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+savedFile$significance <- mapply(significance, savedFile$padj, savedFile$log2FoldChange)
+x <- savedFile$log2FoldChange
+y <- -log10(savedFile$padj)
+ggplot(savedFile,aes(x=x, y=y, color = savedFile$significance))+geom_point() + labs(x = "Log2 Fold Change", y = "-log10(p-value)", color = "Significance")+geom_vline(xintercept = c(1, -1), linetype = 'dashed') + geom_hline(yintercept = -log10(0.05), linetype = 'dashed')
+```
+A volcano plot can be enterprited by first examining the xaxis. This axis plots the fold change (in Log2), thus negative values are down expressed and positive ones are up expressed. The fold change being in Log2 indicates that a value of 1 means twice as expressed. 
+
+As for the y-axis of the volcano plot, this represents the statistical significance of the differential expression, this indicates if there is a meaningful difference between expression levels in control vs treatment groups (4, 6).
+
+### Question 2G
+
+``` {r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+df <- apply(savedFile[,c(7:64)], MARGIN = 1, meanFunction)
+df <- data.frame(
+  gene = savedFile[,2],
+  log2FoldChange = savedFile[,4],
+  padj = savedFile[,6],
+  average = as.numeric(df)
+)
+df$log10AvgExp <- log10(df$average)
+
+df$significant <- df$padj < 0.05
+ggplot(df, aes(x = df$log10AvgExp, y = df$log2FoldChange, color = significant)) + geom_point() + labs(x = "Log Average Expression", y = "Log2 Fold Change", color = "Significance")
+
+```
+MA Plots have average expression on the x-axis, and thus we can interpret this as what genes are expressed the most across either treatment or control conditions. Note for this graph I used Log10(Average Expression) as some of the genes were so highly expressed that the graph was smushed and not very informative. On the y-axis we show fold change (expressed in log2) and represents if a gene is upregulated (positive) or downregulated (negative). The colouring shows if there is a significant p-value between control and treatment expression (7).
+
+
+## Question 3
+
+### Question 3A
+Per the course information, I downloaded the metadata for this RNAseq data from GEO as a csv. I will load it into this file, and merge it with my existing downloaded data.
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+library(SummarizedExperiment)
+metadata <- read.csv("SraRunTable.csv")
+
+rawExpression <- as.matrix(savedFile[,c(7:64)])
+logTransformed <- log2(rawExpression)
+
+geneMetadata <- data.frame(
+  SYMBOL = savedFile[,2],
+  log2FoldChange = savedFile[,4],
+  padj = savedFile[,6]
+)
+
+metadata <- metadata[match(colnames(rawExpression), metadata$GEO_Accession..exp.), ]
+geneIDs <- make.unique(as.character(savedFile[,1]))
+rownames(rawExpression) <- geneIDs
+rownames(logTransformed) <- geneIDs
+rownames(geneMetadata) <- geneIDs
+rownames(metadata) <- metadata$GEO_Accession..exp.
+#Now lets combine everything above into a summarizedExperiment object
+
+experiment <- SummarizedExperiment(assays = list(
+    raw_counts = rawExpression,
+    log_transformed = logTransformed
+  ), rowData = geneMetadata, colData = metadata)
+experiment
+```
+I may have missed where this lives in the week 1 notes, but I did use both R documentation and AI to help with this problem (3,2). I used AI to help with organizing my rownames, as I had some issues with incorrect names. Additionally the metadata I downloaded from GEO had 64 entries instead of 58, so I had AI help refine my metadata (this was done by matching the column names of my expression data (which has GSM identifiers to the rows of metadata GEO accession numbers to remove the entries that don't match. I think I could have figured out how to do this part, but the use of AI made it much easier.))
+
+### Question 3B
+
+I have already constructed the summarizedExperiment object in previous part, but let's check the names of the elements here.
+
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+
+# First let's check the assays have the same row and col names
+identical(rownames(rawExpression), rownames(logTransformed))
+identical(colnames(rawExpression), colnames(logTransformed))
+
+#Now let's compare one of the assay elements to the geneMetadata row names
+identical(rownames(rawExpression), rownames(geneMetadata))
+
+#Finally, lets check the sample metadata with one of the assay column names
+identical(rownames(metadata), colnames(rawExpression))
+```
+
+### Question 3C
+#### Selecting only treatment groups
+The treatment group can be determined by using column metadata to return non-"non-failing" disease states.
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+experiment[,experiment$disease == "dilated cardiomyopathy" | experiment$disease == "ischemic cardiomyopathy"]
+```
+
+#### Selecting only statistically significant expressed genes
+We can select only statistically significant expressed genes by filtering rowData to inlude only values that have an adjusted p-value less than 0.05.
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+
+experiment[rowData(experiment)$padj < 0.05,]
+```
+
+#### Combining both filters above
+We can combine both filters by saving the result of the first filter to a new SummarizedExperiment object and then performing second filter on new object. This could also be done by parsing the output of filter 1 to filter 2, however I am unsure how to do this in R at the moment. 
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+filtered <- experiment[,experiment$disease == "dilated cardiomyopathy" | experiment$disease == "ischemic cardiomyopathy"]
+
+filtered[rowData(filtered)$padj < 0.05,]
+```
+
+### Question 3D
+I used AI in this question, as I was unsure how to bring gene names to the front of my formatted table. The help I got explained how the code we are executing just rearranges the order to gene first, then all of the following columns are returned in a list with the exception of gene column).
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+filtered <- experiment[order(rowData(experiment)$padj)]
+data <- assay(filtered,1)[1:5,]
+data <- as.data.frame(data)
+data$Gene <- rowData(filtered)$SYMBOL[1:5]
+data <- data[, c("Gene", setdiff(names(data), "Gene"))]
+datatable(data, filter = 'top', options = list(pageLength = 10, scrollX = TRUE, scrollY = "400px", autoWidth = TRUE))
+```
+
+### Question 3E
+I think that the SummarizedExperiment object is preferable to storing expression matrices, row annotationsm and sample annotation as seperate dataframes since it is much earier to manipulate data to return the desired data. 
+
+## Question 4
+
+### Question 4A
+I think that bioconductor objects store data with genes as rows and samples as columns due to the historical component of microarray analysis (the only source I could find for this was Reddit r/Bioinformatics (5)). Statistical learning functions expect a different layout, samples x features, due to the layout being setup properly for mathematical operations to be performed across the columns. If we passed the expression data as is through a machine learning model, the model would be able to produce results, however it would not be the ones we likely desire. The model would be set up to predict which genes are involved in a specific condition, instead of predicting if a condition would arise due to the gene expressions present. Additionally, there would be raw fewer observations if we passed the expression data without transposing it, 58 vs 19xxx for each condition. 
+
+### Question 4B
+``` {r}
+correlationAnalysis <- function(summarizedExperiment, gene, metadata, colData = FALSE){
+  # Filter the summarized experiment based on metadata variable
+  if(colData){
+    
+    metadata <- t(colData(summarizedExperiment)[[metadata]])
+  }else{
+    metadata <- t(rowData(summarizedExperiment)[[metadata]])
+    metadata <- t(metadata)
+  }
+  #Check the type of data that metadata is
+  metadataType <- is.numeric(metadata)
+  
+  if (metadataType){
+  #Collect the expression data for the selected gene
+  expressionData <- assay(summarizedExperiment,1)
+  expressionData <- as.data.frame(expressionData)
+  expressionData$Gene <- rowData(summarizedExperiment)$SYMBOL
+  expressionData <- expressionData[,c("Gene", setdiff(names(expressionData), "Gene"))]
+  
+  index <- match(gene, rowData(summarizedExperiment)$SYMBOL)
+  
+  expressionData <- expressionData[index,]
+  
+  if (!colData){
+    metadata <- metadata[index,]
+  }
+  
+  expressionData <- expressionData[,-1]
+  
+  # Check if the dimensions are the same so that they can be tested against one another.
+  equal <- identical(dim(expressionData), dim(metadata))
+  
+  #Transform the objects into numerical vectors for correlation test
+  
+  expressionData <- as.numeric(expressionData)
+  metadata <- as.numeric(metadata)
+  
+  #Proceed with analysis if the dimensions are the same
+  if (equal){
+  cor.test(expressionData, metadata)
+  } else{
+    print("The dimensions are not similar.")
+  }
+  }
+}
+```
+
+#### Calling function on colData
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+correlationAnalysis(experiment, "HMGN2", "AGE", colData = TRUE)
+```
+
+#### Calling function on rowData
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, class.source = "fold-show", fig.height=5, fig.width=8, results='show', cache=FALSE}
+names(rowData(experiment))
+correlationAnalysis(experiment, "HMGN2", "log2FoldChange", colData = FALSE)
+```
+As we can see in the executed code above, the function does not perform correlation analysis on the rowData since the resulting metadata and expressionData objects are not similar sizes. This makes sense as the rowData, in this case Log2FoldChange, is calculated from the raw exression values. Additionally, the function I wrote handles this by not performing correlation analysis on the incorrect dimension objects. 
+
+
+## Citations
+1. Clough, E., Barrett, T., Wilhite, S. E., Ledoux, P., Evangelista, C., Kim, I. F., Tomashevsky, M., Marshall, K. A., Phillippy, K. H., Sherman, P. M., Lee, H., Zhang, N., Serova, N., Wagner, L., Zalunin, V., Kochergin, A., & Soboleva, A. (2023). NCBI GEO: Archive for gene expression and epigenomics data sets: 23-year update. Nucleic Acids Research, 52(D1), D138–D144. https://doi.org/10.1093/nar/gkad965
+2. OpenAI. (2026). ChatGPT (GPT-6) [Large language model]. OpenAI ChatGPT
+3. SummarizedExperiment for Coordinating Experimental Assays, Samples, and Regions of Interest. (n.d.). Retrieved November 3, 2026, from https://bioconductor.org/packages/3.23/bioc/vignettes/SummarizedExperiment/inst/doc/SummarizedExperiment.html
+4. RPubs—Volcano Plot using ggplot. (n.d.). Retrieved November 3, 2026, from https://rpubs.com/akashmitra/volcano-plot
+5. Ok this is probably a silly question, but why are gene count files often oriented with the gene names as rows and samples as columns? : R/bioinformatics. (n.d.). Retrieved November 3, 2026, from https://www.reddit.com/r/bioinformatics/comments/ue7gee/ok_this_is_probably_a_silly_question_but_why_are/
+6. Interpreting a Volcano Plot. (n.d.). Basepair Support. Retrieved November 3, 2026, from https://support.basepairtech.com/support/solutions/articles/14000146147-interpreting-a-volcano-plot
+7. Biostatsquid. (2025, November 6). How to interpret MA plots—Biostatsquid.com. https://biostatsquid.com/how-to-interpret-ma-plots/
