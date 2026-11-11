@@ -25,6 +25,7 @@ Assignment information will be updated as course progresses.
 |Assignment|Description|Tools|
 |---|---|---|
 |Assignment 1|Develop basic working experience with R programming, data exploration, reproducible reporting, and scalable data management.|R, RStudio|
+|Assignment 2|Explore the notion of chance and how it applies to significance measures, and understand the role of the assumptions made by specific tests|R, RStudio|
 ## Technology
 R <br>
 RStudio <br>
