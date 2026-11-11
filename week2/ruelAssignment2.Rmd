@@ -1,0 +1,596 @@
+---
+title: "Week 1 Homework"
+author: "Charles-William Ruel"
+date: "03NOV26"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+  pdf_document:
+    toc: true
+vignette: >
+    %\VignetteIndexEntry{Text}
+    %\usepackage[utf8]{inputenc}
+    %\VignetteEngine{knitr::rmarkdown}
+fontsize: 15pt
+editor_options: 
+  chunk_output_type: console  
+---
+
+# Homework 2
+Explore the notion of chance and how it applies to significance measures, and understand the role of the assumptions made by specific tests (e.g. the t-test)
+
+## Question 1
+
+``` {r}
+rmsdCalc <- function(DTcol, mean){
+  meanDev <- 0
+  for (i in 1:length(DTcol)){
+    Dev <- mean - DTcol[i]
+    sDev <- Dev^2
+    meanDev <- meanDev + sDev
+  }
+  rmsd <- meanDev
+  return(rmsd)
+}
+
+normSD <- function(DTcol, mean, type){
+  DTcol <- DTcol[!is.na(DTcol)]
+  n <- length(DTcol)
+  rmsd <- rmsdCalc(DTcol, mean)
+  if (type == 0){
+    sdVal <- rmsd/(n-1)
+  } else if (type == 1){
+    sdVal <- rmsd/(n-2)
+  } else if (type == -1){
+    sdVal <- rmsd/n
+  }
+  sdVal <- sqrt(sdVal)
+  return(sdVal)
+}
+```
+
+``` {r, eval=TRUE, show=TRUE}
+set.seed(1234)
+max.sample.size <- 20
+sampleSize <- c(2:max.sample.size)
+n.sim <- 10000
+sd.ori <- matrix(0, nrow = n.sim, ncol = max.sample.size)
+sd.n <- matrix(0, nrow = n.sim, ncol = max.sample.size)
+sd.nMinus2 <- matrix(0, nrow = n.sim, ncol = max.sample.size)
+j <- 1
+for (i in sampleSize){
+  for (i.sim in 1:n.sim){
+    data <- rnorm(i)
+    X <- mean(data)
+    # Calc normal SD
+    x.sd <- normSD(data, X, 0)
+    sd.ori[i.sim, i] <- x.sd
+    
+    # repeat for rmsd/n
+    x.sd <- normSD(data, X, -1)
+    sd.n[i.sim, i] <- x.sd
+    
+    # repeat for rmsd/n-2
+    x.sd <- normSD(data, X, 1)
+    sd.nMinus2[i.sim, i] <- x.sd
+  }
+}
+
+# Now lets calculate mean and spread of all values for each sample size
+ori.mean <- as.numeric()
+ori.sd <- as.numeric()
+
+n.mean <- as.numeric()
+n.sd <- as.numeric()
+
+nMinus2.mean <- as.numeric()
+nMinus2.sd <- as.numeric()
+
+j <- 1
+for (i in sampleSize){
+  ori.mean[j] <- mean(sd.ori[,i])
+  ori.sd[j] <- sd(sd.ori[,i])
+  
+  n.mean[j] <- mean(sd.n[,i])
+  n.sd[j] <- sd(sd.n[,i])
+  
+  nMinus2.mean[j] <- mean(sd.nMinus2[,i])
+  nMinus2.sd[j] <- sd(sd.nMinus2[,i])
+  
+  j <- j+1
+}
+
+sd.conv <- nMinus2.sd[max.sample.size-1]
+
+# Finally lets make a plot for the mean of variance calculations and standard deviation.
+plot(1, type = "n", xlab = "Sample Size", ylab="Sample deviation average", xlim=c(0,max.sample.size), ylim=c(-.5,1.5), main="Average standard deviation calculated 3 ways \n across 10,000 simulations with increasing sample size")
+
+points(sampleSize, ori.mean, col = "red")
+points(sampleSize, n.mean, col="purple")
+points(sampleSize, nMinus2.mean, col = "forestgreen")
+
+abline(h=1, col = "grey")
+
+legend("bottomright", legend=c("n-1", "n", "n-2"), col=c("red", "purple", "forestgreen"), lwd=2)
+
+plot(1, type = "n", xlab = "Sample Size", ylab="Sample deviation standard deviation", xlim=c(0,max.sample.size), ylim=c(-.5,1.5), main="Standard deviation of standard deviations calculated 3 ways \n across 10,000 simulations with increasing sample size")
+
+points(sampleSize, ori.sd, col = "red")
+points(sampleSize, n.sd, col="purple")
+points(sampleSize, nMinus2.sd, col = "forestgreen")
+
+abline(h=sd.conv, col = "grey")
+
+legend("bottomright", legend=c("n-1", "n", "n-2"), col=c("red", "purple", "forestgreen"), lwd=2)
+
+```
+
+The calculated standard deviations averages across 10,000 simulations approach the known standard deviation as the sampling size increases, as we can see in the top figure above. The more stringent standard deviation calculation (n-2) starts off at a value of Inf, and eventually converges to an average of 1. Additionally, the two other calculations of standad deviation also converge to a value of 1 as sample size increases. 
+
+Additionally, the spread of standard deviations converges to around `r sd.conv` as sample size increases, regardless of the method used to calculate standard deviation.
+
+## Question 2
+
+``` {r, eval=TRUE, show=TRUE}
+set.seed(1234)
+X <- 30
+sd <- 2.5
+
+n1 <- 7
+n2 <- 11
+
+data.1 <- rnorm(n1, X, sd)
+data.2 <- rnorm(n2, X, sd)
+
+mean.difference <- mean(data.1)-mean(data.2)
+
+pVal <- t.test(data.1, data.2)$p.value
+```
+The normal distribution with a mean of `r X` and standard deviation of `r sd`, when sampled twice with two different sample sizes (`r n1` & `r n2`) had a difference in means of `r mean.difference`. A t-test was performed on this data, with the null hypothesis being "the samples came from the same distribution". This t-test had a p-value of `r pVal`, thus indicating the null hypothesis cannot be rejected.
+
+``` {r, eval=TRUE, show=TRUE}
+sim <- 10000
+sim.diff <- matrix(0, nrow= sim, ncol = 12)
+sim.pVal <- matrix(0, nrow= sim, ncol = 12)
+mean.diff <- function(x) mean(x[1:n1])-mean(x[(n1+1):(n1+n2)])
+diff.sim <- numeric()
+ge.cnt <- 0
+
+for (j in 1:12){
+for (i in 1:sim){
+  data <- rnorm(n1+n2, X, sd)
+  diff.sim[i] <- mean.diff(data)
+  
+  sim.diff[i, j] <- diff.sim[i]
+  
+  sim.pVal[i,j] <- t.test(data[1:n1],data[(n1+1):(n1+n2)])$p.value
+  
+  if (diff.sim[i] >= mean.difference){
+    ge.cnt <- ge.cnt + 1
+  }
+}
+}
+
+sim.p.rk <- matrix(0, nrow = sim, ncol = 12)
+
+for (j in 1:12){
+sim.p.rk[,j] <- rank(-abs(sim.diff[,j]))/sim
+}
+
+plot(sort(diff.sim),main=paste("Rank",
+  ge.cnt/sim),ylab="")
+
+corr <- cor.test(sim.p.rk, sim.pVal)$p.value
+
+
+```
+
+``` {r, eval=TRUE, show=TRUE}
+hist(sim.diff, xlab="Mean Difference of resamples compared to original mean", main="Distribution of mean differences")
+hist(sim.pVal, xlab = "p-value results of t-tests performed on resampled pairs", main="Distribution of t-test calculated p-values")
+hist(sim.p.rk, xlab = "Brute force p-values", main="Distribution of brute force p-values")
+plot(sim.diff, sim.pVal, xlab = "Mean Differences", ylab = "t-test p-value", main = "t-test p-values versus the differences \n between the means of resampled pairs")
+plot(sim.diff, sim.p.rk, xlab = "Mean Differences", ylab="Brute force p-values", main="Brute force p-values versus the differences \n between the means of resampled pairs")
+plot(sim.p.rk,sim.pVal, xlab = "Brute force p-values", ylab="t-test p-values", main="t-test vs brute force p-values")
+```
+The results plotted in the graphs above display that the differences in means of the two samples is normally distributed centered around 0. This strong distribution around a zero difference in mean, can indicates the two means may have come from the same distribution. As we can observe in the chart plotting t-test p-values to mean differences, it makes sense that p-values are quite high as dfferences in mean approach zero, and that the p-value becomes more significant with increasing differences in mean. Finally, it can be observed that the calculated p-values and brute force p values appear to have a strong correlation (correlation p-value: `r corr`.
+
+Now repeated with larger sample sizes
+``` {r, eval=TRUE, show=TRUE}
+set.seed(1234)
+X <- 30
+sd <- 2.5
+
+n1 <- 28
+n2 <- 44
+
+data.1 <- rnorm(n1, X, sd)
+data.2 <- rnorm(n2, X, sd)
+
+mean.difference <- mean(data.1)-mean(data.2)
+
+pVal <- t.test(data.1, data.2)$p.value
+```
+The normal distribution with a mean of `r X` and standard deviation of `r sd`, when sampled twice with two different sample sizes (`r n1` & `r n2`) had a difference in means of `r mean.difference`. A t-test was performed on this data, with the null hypothesis being "the samples came from the same distribution". This t-test had a p-value of `r pVal`, thus indicating the null hypothesis cannot be rejected.
+
+``` {r, eval=TRUE, show=TRUE}
+sim <- 10000
+sim.diff <- matrix(0, nrow= sim, ncol = 12)
+sim.pVal <- matrix(0, nrow= sim, ncol = 12)
+mean.diff <- function(x) mean(x[1:n1])-mean(x[(n1+1):(n1+n2)])
+diff.sim <- numeric()
+ge.cnt <- 0
+
+for (j in 1:12){
+for (i in 1:sim){
+  data <- rnorm(n1+n2, X, sd)
+  diff.sim[i] <- mean.diff(data)
+  
+  sim.diff[i, j] <- diff.sim[i]
+  
+  sim.pVal[i,j] <- t.test(data[1:n1],data[(n1+1):(n1+n2)])$p.value
+  
+  if (diff.sim[i] >= mean.difference){
+    ge.cnt <- ge.cnt + 1
+  }
+}
+}
+
+sim.p.rk <- matrix(0, nrow = sim, ncol = 12)
+
+for (j in 1:12){
+sim.p.rk[,j] <- rank(-abs(sim.diff[,j]))/sim
+}
+
+plot(sort(diff.sim),main=paste("Rank",
+  ge.cnt/sim),ylab="")
+
+corr <- cor.test(sim.p.rk, sim.pVal)$p.value
+```
+
+``` {r, eval=TRUE, show=TRUE}
+hist(sim.diff, xlab="Mean Difference of resamples compared to original mean", main="Distribution of mean differences")
+hist(sim.pVal, xlab = "p-value results of t-tests performed on resampled pairs", main="Distribution of t-test calculated p-values")
+hist(sim.p.rk, xlab = "Brute force p-values", main="Distribution of brute force p-values")
+plot(sim.diff, sim.pVal, xlab = "Mean Differences", ylab = "t-test p-value", main = "t-test p-values versus the differences \n between the means of resampled pairs")
+plot(sim.diff, sim.p.rk, xlab = "Mean Differences", ylab="Brute force p-values", main="Brute force p-values versus the differences \n between the means of resampled pairs")
+plot(sim.p.rk,sim.pVal, xlab = "Brute force p-values", ylab="t-test p-values", main="t-test vs brute force p-values")
+```
+
+As the sample sizes increase, we can observe tighter distribution around the t-test p-values to mean differences. Additionally, the scatter plot showing relationship between t-test p-values and brute force p-values shows a tighter clustering of points (correlation p-value: `r corr`).
+
+## Question 3
+
+``` {r, eval=TRUE, show=TRUE}
+set.seed(1234)
+distSize <- 10000
+dist.1 <- rnorm(distSize, mean=0, sd =1)
+dist.2 <- c(rnorm(distSize/2, mean = -10, sd =1),rnorm(distSize/2, mean = 10, sd =1))
+
+hist(dist.1, xlab = "", main= "Normal distribution with mean 0 and sd 1")
+hist(dist.2, xlab='', main="Union of two normal distributions with means of 10 and -10 \n and sd of 1")
+
+mean.1 <- mean(dist.1)
+mean.2 <- mean(dist.2)
+
+sampleSize <- 15
+
+sample.1 <- sample(dist.1, sampleSize)
+sample.2 <- sample(dist.2, sampleSize)
+
+pVal <- t.test(sample.1, sample.2)$p.value
+```
+As we can see above, the two distributions have means centered around zero (`r mean.1` and `r mean.2`), additionally if we take a sample of `r sampleSize` values from each distribution and perform a t-test we observe non-significat p-values (`r pVal`).
+
+``` {r, eval=TRUE, show=TRUE}
+sim <- 1000
+
+sim.pVal <- numeric()
+
+for (i in 1:sim){
+  x.1 <- sample(dist.1, sampleSize)
+  x.2 <- sample(dist.2, sampleSize)
+  sim.pVal[i] <- t.test(x.1, x.2)$p.value
+}
+
+hist(sim.pVal, xlab = "t-test p-Value", main="Distribution of p-values from t-tests performed on samples from \n distributions 1 and 2 above.")
+```
+
+The distribution of p-values in figure above display show near uniform distribution of p-values between 0 and 1. This distribution implies that we cannot reject our null hypothesis, as the repeat t-test p-values often lies above significant (p = 0.05), thus we cannot determine that the values come from two different distributions. 
+
+## Question 4
+
+### Question 4A
+``` {r}
+# Not sure if "by hand" meant not using the choose(n,k) function from base R, here I write by own.
+nChooseK <- function(n, k){
+  val <- factorial(n)/(factorial(k)*factorial(n-k))
+  return(val)
+}
+
+biNom.prob <- function(n, k, p){
+  val <- (p^k)*(1-p)^(n-k)
+}
+sens <- 0.8
+n <- 15
+k <- 10
+
+combinatorics <- nChooseK(n,k)
+
+prob <- biNom.prob(n, k, sens)
+
+probability <- combinatorics*prob
+```
+
+The probability of `r k` patients out of `r n` patients testing positive with an assay sensitivity of `r sens` is `r probability`. The example above calculated this using the binomial probability equation involving n choose k. 
+
+### Question 4B
+``` {r, eval=TRUE, show=TRUE}
+dbinom.probability <- dbinom(k, n, sens)
+```
+
+Using the dbinom() function in R (prob: `r dbinom.probability`) we can see that we get the same value as the "by hand" calculated probability (`r probability`).
+
+### Question 4C
+``` {r, eval=TRUE, show=TRUE}
+sum.prob <- 0
+for (i in 1:(n-k)){
+  sum.prob <- sum.prob + dbinom((k+i), n, sens)
+}
+
+
+q <- 10
+
+pbinom.p <- pbinom(q, n, sens, lower.tail = FALSE)
+```
+
+Adding the probabilities of having 10, 11, 12, ..., 15 positive tests yielded a probability of `r sum.prob`. This value is equal to using the pbinom approach, which yields a probability of `r pbinom.p`.
+
+### Question 4D
+``` {r, eval=TRUE, show=TRUE}
+sim <- 10000
+
+
+sim.dist <- rbinom(sim, n, sens)
+tenPositive <- 0
+for (i in 1:length(sim.dist)){
+  if(sim.dist[i] >= 10){
+    tenPositive <- tenPositive + 1
+  }
+}
+prop.tenOrMore <- tenPositive/sim
+```
+
+Performing 10,000 simulations of 15 observations with a sensitivity of 80% yielded a probability of having atleast 10 patients test positive of `r prop.tenOrMore`. This value is pretty close to the value calculated in part C (`r pbinom.p`).
+
+### Question 4E
+``` {r, eval=TRUE, show=TRUE}
+p<-0.05
+val <- qbinom(p, 15, sens, lower.tail = FALSE)
+```
+
+The smallest number of tests to get a probability less than or equal to 0.05 that will result in less than 15 positive tests. This value is `r val`.
+
+## Question 5
+
+``` {r, eval=TRUE, show=TRUE}
+library(DBI)
+library(duckdb)
+library(repoquet)
+config_path <- "~/Documents/Brandeis/rbif111/homework/database/repoquet_public_example/repository_config.R"
+cfg <- load_repository_config(config_path)
+temp_dir <- file.path(cfg$FormattedDBPath, "duckdb_temp")
+dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
+con <- open_duckdb( FormattedDBPath = cfg$FormattedDBPath, DBName = cfg$DBName, TempDirPath = temp_dir, GB = cfg$DuckDB_GB, ReadOnly = TRUE)
+
+
+uci_tables <- DBI::dbListTables(con)
+data <- uci_tables[529]
+data <- DBI::dbGetQuery(con,paste("SELECT * FROM", data))
+
+# From documentation I found that the disease diagnosis is found in the "NUM" column (1)
+
+y.HD <- data[data$NUM > 0,]
+n.HD <- data[data$NUM == 0,]
+
+intCols <- c(3:11,13:14)
+shapiroVals <- numeric(length(intCols))
+cols <- numeric()
+for (i in 1:length(intCols)){
+  index <- intCols[i]
+  val <- data[,index]
+  shapiroVals[i] <- shapiro.test(val)$p.value
+  cols[i] <- colnames(data[index])
+  qqnorm(val, main=paste("QQ Plot:", colnames(data[index])))
+  qqline(val, col = "red", lwd=2)
+}
+DT <- data.frame(
+  "Column Name" = cols,
+  "Shapiro-Wilks Test p-value" = shapiroVals
+)
+DT
+```
+
+From the p-values calculated from the Shapiro-Wilks test observed in the data table above, we can reject the null hypothesis for each column tested. The null hypothesis in this case is "the data is normally distributed", thus we can determine that of all the numerical columns in the heart disease data set none are normally distributed. 
+
+``` {r, eval=TRUE, show=TRUE}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+data$group <- ifelse(data$NUM == 0, "No Heart-Disease", "Heart Disease")
+
+pivotDY <- data %>%
+  pivot_longer(
+    cols = all_of(cols),
+    names_to = "Feature",
+    values_to = "Value"
+  )
+
+ggplot(pivotDY, aes(x = Feature, y = Value, fill = group)) + geom_boxplot()
+
+
+ggplot(data, aes(x=group, y=CHOL)) + geom_boxplot()
+```
+
+I did have an issue with this question, where I was unsure how to plot the boxplot properly with how the original data table was setup. I did resort to AI to help me setup the data table properly, from the response I was able to learn how to use the pivot function in R which formatted the table how I needed (2). In order to test the AI response, I decided to test if making a simple box plot that has grouping on the x-axis , CHOL value on the y-axis appeared similar to the two box plots made from pivot table. The result of this test showed that yes the pivot table method to create complex boxplot worked.
+
+Let's perform statistical test based on the p-value of the shapiro-wilks test.
+
+```{r, eval=TRUE, show=TRUE}
+testVal <- numeric(length(intCols))
+statTest <- character(length(intCols))
+for (i in 1:length(intCols)){
+  index <- intCols[i]
+  col <- colnames(data[index])
+  pVal <- shapiroVals[i]
+  if (pVal <= 0.05){
+    testVal[i] <- wilcox.test(y.HD[[col]], n.HD[[col]])$p.value
+    statTest[i] <- "Mann-Whitney U Test"
+  } else{
+    testVal[i] <- t.test(y.HD[[col]], n.HD[[col]])$p.value
+    statTest[i] <- "t-test"
+  }
+  
+}
+
+DT <- data.frame(
+  "Column Name" = cols,
+  "Statistical Test Performed" = statTest,
+  "Statistical Test p-value" = testVal
+)
+DT
+```
+
+## Question 6
+```{r, eval=TRUE, show=TRUE}
+
+# Let's find the numerical columns with greatest variance and overlap
+y.col.var <- numeric(length(intCols))
+n.col.var <- numeric(length(intCols))
+y.col.mean <- numeric(length(intCols))
+n.col.mean <- numeric(length(intCols))
+for (i in 1:length(intCols)){
+  index <- intCols[i]
+  y.col.var[i] <- var(y.HD[[index]], na.rm=TRUE)
+  n.col.var[i] <- var(n.HD[[index]], na.rm=TRUE)
+  y.col.mean[i] <- mean(y.HD[[index]], na.rm=TRUE)
+  n.col.mean[i] <- mean(n.HD[[index]], na.rm=TRUE)
+}
+
+DT <- data.frame(
+  "Column Name" = cols,
+  "Yes HD mean" = y.col.mean,
+  "Yes HD var" = y.col.var,
+  "No HD mean" = n.col.mean,
+  "No HD var" = n.col.var
+)
+DT
+```
+
+From this data table, I determined the "CHOL" column to have the greatest variance and overlap, due to the mean proximity between groups and large variance value observed.
+
+### Question 6A
+
+```{r, eval=TRUE, show=TRUE}
+sim <- 10000
+sampleSizes <- seq(5,20,5)
+
+
+CHOL.power <- numeric(length(sampleSize))
+
+for (i in 1:length(sampleSizes)){
+  count <- 0
+  sampleSize <- sampleSizes[i]
+  pVal <- numeric(sim)
+  for (j in 1:sim){
+    yes.data <- sample(y.HD$CHOL, sampleSize)
+    no.data <- sample(n.HD$CHOL, sampleSize)
+    pVal[j] <- wilcox.test(yes.data, no.data)$p.value
+    if (pVal[j] <= 0.05){
+      count <- count + 1
+    }
+  }
+  hist(pVal, main=paste("p-Value distribution comparing \n 'CHOL' in patients withand without heart disease \n for sample size: ", sampleSize))
+  CHOL.power[i] <- count/sim
+}
+
+```
+
+### Question 6B
+
+Comparing the means and variance from data table, it would appear that the "CP" column may have the least overlap, due to difference in mean being further apart compared to the variance.
+
+```{r, eval=TRUE, show=TRUE}
+sim <- 10000
+sampleSizes <- seq(5,20,5)
+
+
+CP.power <- numeric(length(sampleSize))
+
+for (i in 1:length(sampleSizes)){
+  count <- 0
+  sampleSize <- sampleSizes[i]
+  pVal <- numeric(sim)
+  for (j in 1:sim){
+    yes.data <- sample(y.HD$CP, sampleSize)
+    no.data <- sample(n.HD$CP, sampleSize)
+    pVal[j] <- wilcox.test(yes.data, no.data)$p.value
+    if (pVal[j] <= 0.05){
+      count <- count + 1
+    }
+  }
+  hist(pVal, main=paste("p-Value distribution comparing \n 'CP' in patients withand without heart disease \n for sample size: ", sampleSize))
+  CP.power[i] <- count/sim
+}
+
+```
+
+### Question 6C
+
+Let's now evaluate the power behind these statistcal tests for both "CHOL" and "CP" columns. 
+
+``` {r, eval=TRUE, show=TRUE}
+CP.mean.diff <- DT$Yes.HD.mean[1] - DT$No.HD.mean[1]
+CP.power.Val <- numeric(length(sampleSizes))
+for (i in 1:length(sampleSizes)){
+  sampleSize <- sampleSizes[i]
+  CP.power.Val[i] <- power.t.test(n=sampleSize,
+                            delta = CP.mean.diff,
+                            sd = sd(data$CP),
+                            sig.level = 0.05)$power
+  
+}
+
+
+CHOL.mean.diff <- DT$Yes.HD.mean[3] - DT$No.HD.mean[3]
+CHOL.power.Val <- numeric(length(sampleSizes))
+for (i in 1:length(sampleSizes)){
+  sampleSize <- sampleSizes[i]
+  CHOL.power.Val[i] <- power.t.test(n=sampleSize,
+                            delta = CHOL.mean.diff,
+                            sd = sd(data$CHOL),
+                            sig.level = 0.05)$power
+  
+}
+
+highestPower <- CHOL.power.Val[4]
+
+plot(CHOL.power, CHOL.power.Val, xlim=c(0,.15), ylim=c(0,.15), xlab="Simulated power values", ylab="Calculated power values")
+abline(0, 1, col = "red", lty = 2)
+
+#plot(CP.power, CP.power.Val, xlim=c(0,1), ylim=c(0,1), xlab="Simulated power values", ylab="Calculated power values")
+#abline(0, 1, col = "red", lty = 2)
+
+# Finding the size needed for a power of 0.8 for the "CP" column
+sizeNeeded <- power.t.test(delta = CP.mean.diff, power = 0.8, sd = sd(data$CP), sig.level = 0.05)$n
+```
+
+The analytically calculated power value, for the CHOL column, increases as sample size increases. This makes sense as we observe a larger number of < 0.05 p value distribution as sample size increases. However the power is still quite low even with a sample size of 20 `r highestPower`. 
+
+The sample size needed to obtain a power of at-least 0.8 for the "CP" column is `r sizeNeeded`. This makes sense as when we look at the distributions of p-values there is not much of a change between 15 and 20 sample sizes. And we are observing over 8000 p-values below 0.05.
+
+## Citations
+1. Andras Janosi, W. S. (1989). Heart Disease [Data set]. UCI Machine Learning Repository. https://doi.org/10.24432/C52P4X
+2. OpenAI. (2026). ChatGPT (GPT-6) [Large language model]. OpenAI ChatGPT
