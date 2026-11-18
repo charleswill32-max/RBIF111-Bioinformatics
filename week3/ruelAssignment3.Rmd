@@ -1,0 +1,692 @@
+---
+title: "Week 3 Homework"
+author: "Charles-William Ruel"
+date: "17NOV26"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+  pdf_document:
+    toc: true
+vignette: >
+    %\VignetteIndexEntry{Text}
+    %\usepackage[utf8]{inputenc}
+    %\VignetteEngine{knitr::rmarkdown}
+fontsize: 15pt
+editor_options: 
+  chunk_output_type: console
+---
+
+# Homework 3
+
+Develop working knowledge of linear models in R: fitting them, reading diagnostic plots, and judging when a model is (or is not) correctly specified.
+
+## Part A: Simulation Foundation
+
+### Question 1
+
+``` {r, eval=TRUE, show=TRUE}
+set.seed(1234)
+x <- 1:20
+y <- 20+10*1:20+5*(1:20)^2+rnorm(20,0,200)
+
+df <- data.frame(
+  X = x,
+  Y = y
+)
+
+lm.intOnly <- lm(Y~1, data=df)
+lm.linear <- lm(Y ~ X, data=df)
+lm.para <- lm(Y ~ X + I(X^2), data=df)
+
+intOnly.pred <- predict(lm.intOnly)
+linear.pred <- predict(lm.linear)
+para.pred <- predict(lm.para)
+
+intOnly.resid <- residuals(lm.intOnly)
+linear.resid <- residuals(lm.linear)
+para.resid <- residuals(lm.para)
+
+plot(intOnly.pred, intOnly.resid, xlab="Fitted", ylab="Residual", main="Intercept only Residual vs Fitted")
+abline(h=0,lty=2)
+plot(intOnly.pred, df$Y, xlab="Predicted", ylab="Observed", main="Intercept only predicted vs observered")
+abline(0,1,lty=2)
+```
+
+The model created by fitting Y observations to only the intercept does not produce a very good model. We can determine this by observing the lack of fit to the Predicted:Observed dashed line in the predicted vs observed plot. 
+
+``` {r, eval=TRUE, show=TRUE}
+plot(linear.pred, linear.resid, xlab="Fitted", ylab="Residual", main="Y ~ X Residual vs Fitted")
+abline(h=0,lty=2)
+plot(linear.pred, df$Y, xlab="Predicted", ylab="Observed", main="X~Y predicted vs observered")
+abline(0,1,lty=2)
+```
+
+In the model created by fitting Y observations to X, we get a much better model compared to just fitting to intercept. As we can observe, the observed vs predicted plots fall closer to the y=x diagonal line compared to before.
+
+``` {r, eval=TRUE, show=TRUE}
+plot(para.pred, para.resid, xlab="Fitted", ylab="Residual", main="Y ~ X + I(X^2) Residual vs Fitted")
+abline(h=0,lty=2)
+plot(para.pred, df$Y, xlab="Predicted", ylab="Observed", main="X + I(X^2) predicted vs observered")
+abline(0,1,lty=2)
+
+A <- coef(lm.para)["I(X^2)"]
+B <- coef(lm.para)["X"]
+C <- coef(lm.para)["(Intercept)"]
+```
+
+In this final model, we fit Y to a parametric model, and we should expect best fit here since we know the Y variable was created dependent of X in a polynomial relationship. When we observe the predicted vs observed plot here we can see even better grouping of points near the y=x diagonal. The true coefficients of the function AX^2+BX+C is, A = 5 B = 10 and C = 20. In the model fitted above we observed coefficients of A = `r A`, B=`r B`, and C=`r C`. As we can see the noise that we introduced by adding 200 normally distributed points of mean 20 and sd 200 altered the coefficients from their "True" values. 
+
+## Part B: Applying to real world data
+
+Let's download some gene expression data from GEO. 
+``` {r}
+GEODataDownload <- function(DS, gpl, gsm, PlateAnnotInfo, GenerateMetaData, Technology, CountsFile = NULL){
+  library(DESeq2); library(limma); library(data.table)
+  if(Technology == "Array"){
+    gset <- getGEO(DS, GSEMatrix = TRUE, getGPL = FALSE)
+    if(length(gset) == 1) {
+      idx <- 1
+    } else {
+      idx <- grep(gpl, attr(gset, "names"))
+    }
+    
+    if(length(idx) != 1) {
+      stop("Could not uniquely identify the requested GPL platform.")
+    }
+    
+    gset <- gset[[idx]]
+    print(gset)
+    ex <- SummarizedExperiment::assay(gset)
+    Pdat <- as.data.frame(SummarizedExperiment::colData(gset))
+    print(Pdat)
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up raw names ####
+    sml <- c()
+    for(i in 1:nchar(gsms)){ sml[i] <- substr(gsms,i,i)}
+    qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+    LogC <- (qx[5] > 100) ||
+      (qx[6]-qx[1] > 50 && qx[2] > 0) ||
+      (qx[2] > 0 && qx[2] < 1 && qx[4] < 2)
+    if(LogC){ ex[which(ex <= 0)] <- NaN
+    ex <- log2(ex) }
+    print(ex)
+    sml <- paste("G", sml, sep="")
+    f1 <- as.factor(sml)
+    design <- model.matrix(~f1 + 0)
+    colnames(design) <- levels(f1)
+    fit <- lmFit(ex, design)
+    cont.matrix <- makeContrasts(G1-G0, levels = design)
+    fit2 <- contrasts.fit(fit, cont.matrix)
+    fit2 <- eBayes(fit2, 0.01)
+    tT <- topTable(fit2, adjust="fdr", sort.by = "B", number = 25000000000)
+    #### subset ####
+    tT$ID <- rownames(tT)
+    ex2 <- data.table(subset(tT, select=c("ID", "logFC", "P.Value", "adj.P.Val")))
+    ex2$ID <- as.character(ex2$ID)
+    #### annotate with gene names ####
+    plat <- PlateAnnotInfo[GPLID == gpl,][,!"GPLID", with = FALSE]
+    if(nrow(plat) == 0){ print(paste("There is no annotation information available for", gpl)) }
+    plat$ID <- as.character(plat$ID)
+    plat <- plat[!duplicated(plat$ID),]
+    ex2 <- merge(plat, ex2, by = "ID")
+    ex2$ID <- as.character(ex2$ID)
+    exraw <- data.table(ex)
+    exraw$ID <- as.character(rownames(ex))
+    #### annotate raw data with gene names ####
+    ex2 <- merge(ex2, exraw, by = "ID")
+    #### Generate Meta Data ####
+    #### Add Meta data ####
+    return(list(Data = ex2, MetaData = Pdat))
+  }
+  
+  if(Technology == "RNAseq"){
+    ACC <- paste("acc=", DS, sep = "")
+    file <- paste("file=", DS, "_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep = "")
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up DEG names ####
+    urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+    path <- paste(urld, ACC, file, sep="&");
+    if(is.null(CountsFile)) CountsFile <- path
+    cts <- data.table::fread(CountsFile, header=T)
+    tbl <- as.matrix(cts, rownames="GeneID")
+    exraw <- tbl
+    #### Gene annotation from AnnotationHub (GEO GeneIDs are NCBI Entrez IDs) ####
+    library(AnnotationHub)
+    ah <- AnnotationHub()
+    orgdbs <- query(ah, c("OrgDb", "Homo sapiens"))
+    orgdb <- orgdbs[[tail(names(orgdbs), 1)]]
+    annot <- suppressMessages(AnnotationDbi::select(orgdb, keys = rownames(tbl), keytype = "ENTREZID", columns = c("SYMBOL", "GENENAME")))
+    annot <- annot[!duplicated(annot$ENTREZID), ]
+    annot <- data.frame(GeneID = as.integer(annot$ENTREZID), Symbol = annot$SYMBOL, Description = annot$GENENAME)
+    rownames(annot) <- annot$GeneID
+    sml <- strsplit(gsms, split="")[[1]]
+    sel <- which(sml != "X")
+    sml <- sml[sel]
+    tbl <- tbl[ ,sel]
+    gs <- factor(sml)
+    groups <- make.names(c("Ctrl", "Tx"))
+    levels(gs) <- groups
+    sample_info <- data.frame(Group = gs, row.names = colnames(tbl))
+    keep <- rowSums( tbl >= 10 ) >= min(table(gs))
+    tbl <- tbl[keep, ]
+    ds <- DESeqDataSetFromMatrix(countData=tbl, colData=sample_info, design= ~Group)
+    ds <- DESeq(ds, test="Wald", sfType="poscount")
+    r <- results(ds, contrast=c("Group", groups[2], groups[1]), alpha=0.05, pAdjustMethod ="fdr")
+    tT <- r[order(r$padj)[1:length(r$padj)],]
+    tT <- merge(as.data.frame(tT), annot, by=0, sort=F)
+    tT <- subset(tT, select=c("GeneID","padj","pvalue","lfcSE","stat","log2FoldChange","baseMean","Symbol","Description"))
+    #### subset ####
+    ex2 <- data.table(subset(tT, select=c("GeneID", "Symbol", "Description", "log2FoldChange", "pvalue", "padj")))
+    #### Adjust column names ####
+    setnames(ex2, c("GeneID", "Symbol", "Description"), c("ENTREZID", "SYMBOL", "GENENAME"))
+    #### Get Raw data ####
+    GeneID <- as.integer(rownames(exraw))
+    exraw <- as.data.table(exraw)
+    #### Update column names ####
+    exraw$ENTREZID <- GeneID
+    #### merge FC and raw data together ####
+    mer <- merge(ex2, exraw, by = "ENTREZID")
+    return(mer)
+  }
+}
+
+normGEODataDownload <- function(DS, gpl, gsm, PlateAnnotInfo, GenerateMetaData, Technology, CountsFile = NULL){
+  library(DESeq2); library(limma); library(data.table)
+  if(Technology == "Array"){
+    gset <- getGEO(DS, GSEMatrix = TRUE, getGPL = FALSE)
+    if(length(gset) == 1) {
+      idx <- 1
+    } else {
+      idx <- grep(gpl, attr(gset, "names"))
+    }
+    
+    if(length(idx) != 1) {
+      stop("Could not uniquely identify the requested GPL platform.")
+    }
+    
+    gset <- gset[[idx]]
+    print(gset)
+    ex <- SummarizedExperiment::assay(gset)
+    Pdat <- as.data.frame(SummarizedExperiment::colData(gset))
+    print(Pdat)
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up raw names ####
+    sml <- c()
+    for(i in 1:nchar(gsms)){ sml[i] <- substr(gsms,i,i)}
+    qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+    LogC <- (qx[5] > 100) ||
+      (qx[6]-qx[1] > 50 && qx[2] > 0) ||
+      (qx[2] > 0 && qx[2] < 1 && qx[4] < 2)
+    if(LogC){ ex[which(ex <= 0)] <- NaN
+    ex <- log2(ex) }
+    print(ex)
+    sml <- paste("G", sml, sep="")
+    f1 <- as.factor(sml)
+    design <- model.matrix(~f1 + 0)
+    colnames(design) <- levels(f1)
+    fit <- lmFit(ex, design)
+    cont.matrix <- makeContrasts(G1-G0, levels = design)
+    fit2 <- contrasts.fit(fit, cont.matrix)
+    fit2 <- eBayes(fit2, 0.01)
+    tT <- topTable(fit2, adjust="fdr", sort.by = "B", number = 25000000000)
+    #### subset ####
+    tT$ID <- rownames(tT)
+    ex2 <- data.table(subset(tT, select=c("ID", "logFC", "P.Value", "adj.P.Val")))
+    ex2$ID <- as.character(ex2$ID)
+    #### annotate with gene names ####
+    plat <- PlateAnnotInfo[GPLID == gpl,][,!"GPLID", with = FALSE]
+    if(nrow(plat) == 0){ print(paste("There is no annotation information available for", gpl)) }
+    plat$ID <- as.character(plat$ID)
+    plat <- plat[!duplicated(plat$ID),]
+    ex2 <- merge(plat, ex2, by = "ID")
+    ex2$ID <- as.character(ex2$ID)
+    exraw <- data.table(ex)
+    exraw$ID <- as.character(rownames(ex))
+    #### annotate raw data with gene names ####
+    ex2 <- merge(ex2, exraw, by = "ID")
+    #### Generate Meta Data ####
+    #### Add Meta data ####
+    return(list(Data = ex2, MetaData = Pdat))
+  }
+  
+  if(Technology == "RNAseq"){
+    ACC <- paste("acc=", DS, sep = "")
+    file <- paste("file=", DS, "_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep = "")
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up DEG names ####
+    urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+    path <- paste(urld, ACC, file, sep="&");
+    if(is.null(CountsFile)) CountsFile <- path
+    cts <- data.table::fread(CountsFile, header=T)
+    tbl <- as.matrix(cts, rownames="GeneID")
+    exraw <- tbl
+    #### Gene annotation from AnnotationHub (GEO GeneIDs are NCBI Entrez IDs) ####
+    library(AnnotationHub)
+    ah <- AnnotationHub()
+    orgdbs <- query(ah, c("OrgDb", "Homo sapiens"))
+    orgdb <- orgdbs[[tail(names(orgdbs), 1)]]
+    annot <- suppressMessages(AnnotationDbi::select(orgdb, keys = rownames(tbl), keytype = "ENTREZID", columns = c("SYMBOL", "GENENAME")))
+    annot <- annot[!duplicated(annot$ENTREZID), ]
+    annot <- data.frame(GeneID = as.integer(annot$ENTREZID), Symbol = annot$SYMBOL, Description = annot$GENENAME)
+    rownames(annot) <- annot$GeneID
+    sml <- strsplit(gsms, split="")[[1]]
+    sel <- which(sml != "X")
+    sml <- sml[sel]
+    tbl <- tbl[ ,sel]
+    gs <- factor(sml)
+    groups <- make.names(c("Ctrl", "Tx"))
+    levels(gs) <- groups
+    sample_info <- data.frame(Group = gs, row.names = colnames(tbl))
+    keep <- rowSums( tbl >= 10 ) >= min(table(gs))
+    tbl <- tbl[keep, ]
+    ds <- DESeqDataSetFromMatrix(countData=tbl, colData=sample_info, design= ~Group)
+    ds <- estimateSizeFactors(ds)
+    exraw<-counts(ds, normalized=TRUE)
+    ds <- DESeq(ds, test="Wald", sfType="poscount")
+    r <- results(ds, contrast=c("Group", groups[2], groups[1]), alpha=0.05, pAdjustMethod ="fdr")
+    tT <- r[order(r$padj)[1:length(r$padj)],]
+    tT <- merge(as.data.frame(tT), annot, by=0, sort=F)
+    tT <- subset(tT, select=c("GeneID","padj","pvalue","lfcSE","stat","log2FoldChange","baseMean","Symbol","Description"))
+    #### subset ####
+    ex2 <- data.table(subset(tT, select=c("GeneID", "Symbol", "Description", "log2FoldChange", "pvalue", "padj")))
+    #### Adjust column names ####
+    setnames(ex2, c("GeneID", "Symbol", "Description"), c("ENTREZID", "SYMBOL", "GENENAME"))
+    #### Get Raw data ####
+    GeneID <- as.integer(rownames(exraw))
+    exraw <- as.data.table(exraw)
+    #### Update column names ####
+    exraw$ENTREZID <- GeneID
+    #### merge FC and raw data together ####
+    mer <- merge(ex2, exraw, by = "ENTREZID")
+    return(mer)
+  }
+}
+
+effectAnalysis <- function(summarizedExperiment, gene, metadata, colData = FALSE, additional = FALSE, assayNum){
+  # Filter the summarized experiment based on metadata variable
+  if(colData){
+    
+    metadata <- t(colData(summarizedExperiment)[[metadata]])
+  }else{
+    metadata <- t(rowData(summarizedExperiment)[[metadata]])
+    metadata <- t(metadata)
+  }
+  #Check the type of data that metadata is
+  metadataType <- is.numeric(metadata)
+  
+  if (metadataType){
+  #Collect the expression data for the selected gene
+  expressionData <- assay(summarizedExperiment,assayNum)
+  expressionData <- as.data.frame(expressionData)
+  expressionData$Gene <- rowData(summarizedExperiment)$SYMBOL
+  expressionData <- expressionData[,c("Gene", setdiff(names(expressionData), "Gene"))]
+  
+  index <- match(gene, rowData(summarizedExperiment)$SYMBOL)
+  
+  expressionData <- expressionData[index,]
+  
+  if (!colData){
+    metadata <- metadata[index,]
+  }
+  
+  expressionData <- expressionData[,-1]
+  
+  # Check if the dimensions are the same so that they can be tested against one another.
+  equal <- identical(dim(expressionData), dim(metadata))
+  
+  #Transform the objects into numerical vectors for correlation test
+  
+  expressionData <- as.numeric(expressionData)
+  metadata <- as.numeric(metadata)
+  
+  #Proceed with analysis if the dimensions are the same
+  if (equal){
+  
+  model <- lm(metadata ~ expressionData)
+  pVal <- anova(model)$"Pr(>F)"[1]
+  if (additional){
+    plot(model)
+    print(summary(model))
+    print(anova(model))
+  }
+  return(pVal)
+  } else{
+    print("The dimensions are not similar.")
+  }
+  }
+}
+
+beyondLinear <- function(summarizedExperiment, gene, metadata, colData = FALSE, method, dataOnly = FALSE, assayNum){
+  # Filter the summarized experiment based on metadata variable
+  metadataName <- metadata
+  if(colData){
+    
+    metadata <- t(colData(summarizedExperiment)[[metadata]])
+  }else{
+    metadata <- t(rowData(summarizedExperiment)[[metadata]])
+    metadata <- t(metadata)
+  }
+  #Check the type of data that metadata is
+  metadataType <- is.numeric(metadata)
+  
+  if (metadataType){
+  #Collect the expression data for the selected gene
+  expressionData <- assay(summarizedExperiment,assayNum)
+  expressionData <- as.data.frame(expressionData)
+  expressionData$Gene <- rowData(summarizedExperiment)$SYMBOL
+  expressionData <- expressionData[,c("Gene", setdiff(names(expressionData), "Gene"))]
+  
+  index <- match(gene, rowData(summarizedExperiment)$SYMBOL)
+  
+  expressionData <- expressionData[index,]
+  
+  if (!colData){
+    metadata <- metadata[index,]
+  }
+  
+  expressionData <- expressionData[,-1]
+  
+  # Check if the dimensions are the same so that they can be tested against one another.
+  equal <- identical(dim(expressionData), dim(metadata))
+  
+  #Transform the objects into numerical vectors for correlation test
+  
+  expressionData <- as.numeric(expressionData)
+  metadata <- as.numeric(metadata)
+  
+  #Proceed with analysis if the dimensions are the same
+  if (equal){
+  
+  model <- lm(metadata ~ expressionData)
+  pVal <- anova(model)$"Pr(>F)"[1]
+  if (dataOnly){
+    return(list(expressionData = expressionData, metadata = metadata))
+  }else{
+  if (method == "LOESS"){
+    model <- loess(metadata ~ expressionData, sp=0.5)
+      
+    
+  }else if (method == "GAM"){
+    model <- gam(metadata ~ s(expressionData), method="REML")
+  }else if (method =="linear"){
+    model <- lm(metadata ~ expressionData)
+  }
+  else{
+    print(paste("Method:",method," not recognized. Try again."))
+  }
+  return(model)
+  }} else{
+    print("The dimensions are not similar.")
+  }
+  }
+}
+```
+
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+RNAseq <- GEODataDownload("GSE116250", "GPL16791","0000000000000011111111111111111111111111111111111111111111111111","Only needed if the data was generated using MicroArrays","Only needed if the data was generated using MicroArrays","RNAseq")
+
+norm.RNAseq <- normGEODataDownload("GSE116250", "GPL16791","0000000000000011111111111111111111111111111111111111111111111111","Only needed if the data was generated using MicroArrays","Only needed if the data was generated using MicroArrays","RNAseq")
+
+library(SummarizedExperiment)
+library(mgcv)
+metadata <- read.csv("SraRunTable.csv")
+
+rawExpression <- as.matrix(RNAseq[,c(7:70)])
+normalExpression <- as.matrix(norm.RNAseq[,c(7:70)])
+
+geneMetadata <- data.frame(
+  SYMBOL = RNAseq[,2],
+  log2FoldChange = RNAseq[,4],
+  padj = RNAseq[,6]
+)
+
+metadata <- metadata[match(colnames(rawExpression), metadata$GEO_Accession..exp.), ]
+geneIDs <- make.unique(as.character(RNAseq[,1]$ENTREZID))
+rownames(rawExpression) <- geneIDs
+rownames(normalExpression) <- geneIDs
+rownames(geneMetadata) <- geneIDs
+rownames(metadata) <- metadata$GEO_Accession..exp.
+#Now lets combine everything above into a summarizedExperiment object
+
+experiment <- SummarizedExperiment(assays = list(
+    raw_counts = rawExpression,
+    normalizedCounts = normalExpression
+  ), rowData = geneMetadata, colData = metadata)
+experiment
+```
+
+### Question 2
+
+``` {r, eval=TRUE, show=TRUE, cache=TRUE}
+genes <- rowData(experiment)$SYMBOL
+pValues <- numeric(length(genes))
+
+for (gene in 1:length(genes)){
+  
+  pValues[gene] <- effectAnalysis(experiment, genes[gene], "AGE", colData = TRUE, additional = FALSE, assayNum = 1)
+}
+```
+
+``` {r, eval=TRUE, show=TRUE}
+hist(pValues)
+
+mostSig.index <- which.min(pValues)
+mostSig <- genes[mostSig.index]
+
+leastSig.index <- which.max(pValues)
+leastSig <- genes[leastSig.index]
+```
+
+The gene that showed most significant relationship with age is, `r mostSig`.
+
+``` {r, eval=TRUE,show=TRUE}
+effectAnalysis(experiment, mostSig,"AGE",colData = TRUE, additional = TRUE, assayNum = 1)
+```
+
+The gene that showed the least significant relationship with age is, `r leastSig`
+
+``` {r, eval=TRUE,show=TRUE}
+effectAnalysis(experiment, leastSig,"AGE",colData = TRUE, additional = TRUE, assayNum = 1)
+```
+
+### Question 3
+
+``` {r, eval=TRUE, show=TRUE}
+
+geneData <- beyondLinear(experiment, mostSig, "AGE", colData = TRUE, method = "NA", dataOnly = TRUE, assayNum=1)
+expressionData <- geneData$expressionData
+metadata <- geneData$metadata
+
+expData.4.pred <- seq(min(expressionData), max(expressionData), length.out=200)
+newdata <- data.frame(expressionData=expData.4.pred)
+LOESS.model <- beyondLinear(experiment, mostSig, "AGE", colData = TRUE, method = "LOESS", assayNum=1)
+GAM.model <- beyondLinear(experiment, mostSig, "AGE", colData = TRUE, method = "GAM", assayNum=1)
+linear.model <- beyondLinear(experiment, mostSig, "AGE", colData = TRUE, method = "linear", assayNum=1)
+
+pred.LOESS <- predict(LOESS.model, newdata=newdata)
+pred.GAM <- predict(GAM.model, newdata=newdata)
+pred.linear <- predict(linear.model, newdata=newdata)
+plot(expressionData, metadata, xlab=paste(mostSig, "Expression"), ylab="AGE", main=paste(mostSig, "Expression vs AGE"))
+
+lines(expData.4.pred,pred.LOESS, col="steelblue", lwd=2)
+lines(expData.4.pred,pred.GAM, col="tomato", lwd=2)
+lines(expData.4.pred, pred.linear, col="magenta", lwd=2)
+legend("bottomright",
+       legend=c("LOESS","GAM","Linear"),
+       col=c("steelblue","tomato","magenta"),
+       pch = NA,
+       lty=1)
+```
+
+Calculate AIC:
+``` {r, eval=TRUE, show=TRUE}
+lm.aic <- AIC(linear.model)
+#LOESS.aic <- AIC(LOESS.model)
+GAM.aic <- AIC(GAM.model)
+delta.AIC <- lm.aic - GAM.aic
+```
+
+From the analysis above, we computed the AIC for the linear model (`r lm.aic`) and the GAM model (`r GAM.aic`). The difference in these two AIC values is `r delta.AIC`, thus we can determine the GAM plot is not any better than the linear plot as the difference is not greater than 2. 
+
+```{r, eval=TRUE, show=TRUE}
+resid.LOESS <- resid(LOESS.model)
+resid.linear <- resid(linear.model)
+resid.GAM <- resid(GAM.model)
+
+enp.LOESS <- LOESS.model$enp
+edf.GAM <- GAM.model$edf
+
+n.LOESS <- length(resid.LOESS)
+n.lm <- length(resid.linear)
+n.GAM <- length(resid.GAM)
+
+
+rss <- sum(resid.LOESS^2)
+LOESS.aic <- n.LOESS*log(rss/n.LOESS)*(enp.LOESS+1)
+
+aic_lm <- n.lm * log(sum(resid.linear^2) / n.lm) + 2 * (length(coef(linear.model)) + 1)
+aic_gam <- n.GAM * log(sum(resid.GAM^2) / n.GAM) + 2 * (sum(edf.GAM) + 1)
+
+delta.AIC.manual <- aic_lm - aic_gam
+```
+
+By calculating the values by hand we get the following AIC values; Linear: `r aic_lm`, GAM: `r aic_gam`, LOESS: `r LOESS.aic`. Here we see a similar relationship to above where the difference between linear and GAM models are below 2, indicating GAM is not any better than linear `r delta.AIC.manual`. This indicates that the linear model did not miss any relationship, and the non-linear models, GAM and LOESS, do not reveal more information regarding the relationship between `r mostSig` and AGE.
+
+### Question 4
+
+Make a boxplot of the raw vs normalized data.
+
+```{r, eval=TRUE, show=TRUE}
+rawExp <- assay(experiment,1)
+#rawExp <- as.numeric(rawExp)
+
+
+
+normExp <- assay(experiment,2)
+#normExp <- as.numeric(normExp)
+
+
+boxplot(list("Pre-Normalization"=as.vector(log10(as.numeric(rawExp) + 1)),"Post-Normalization"=as.vector(log10(as.numeric(normExp) + 1))),ylab="Log10(count + 1)", main = "Boxplot of expression before and after normalization \n for all genes and patients in RNA-seq of \n heart failure in human left ventricles")
+
+#rawExp$Gene <- rowData(experiment)$SYMBOL
+#rawExp <- rawExp[,c("Gene", setdiff(names(rawExp), "Gene"))]
+
+#normExp$Gene <- rowData(experiment)$SYMBOL
+#normExp <- normExp[,c("Gene", setdiff(names(normExp), "Gene"))]
+
+rawExp.mostSig <- as.numeric(rawExp[mostSig.index,])
+normExp.mostSig <- as.numeric(normExp[mostSig.index,])
+
+boxplot(list("Pre-Normalization"=as.vector(rawExp.mostSig),"Post-Normalization"=as.vector(normExp.mostSig)), ylab="Counts", main=paste("Boxplot of gene:", mostSig, "before and after normalization"))
+
+```
+
+```{r, eval=TRUE, show=TRUE, cache=TRUE}
+pValues.norm <- numeric(length(genes))
+
+for (gene in 1:length(genes)){
+  
+  pValues.norm[gene] <- effectAnalysis(experiment, genes[gene], "AGE", colData = TRUE, additional = FALSE, assayNum = 2)
+}
+```
+
+```{r, eval=TRUE,show=TRUE}
+hist(pValues.norm)
+
+effectAnalysis(experiment, mostSig,"AGE",colData = TRUE, additional = TRUE, assayNum = 2)
+```
+
+In the box-plot of pre- and post- normalized RNAseq expression counts, it is observed that the boxplots do not appear different. The mean, IQR, and outlines appear similar. However, when we plot the distribution of p-values of the normalized data, we see that the p-value distributions are shifted left compared to the initial histogram of p-value distributions. Comparing the results of models produced with raw and normalized expression data for gene `r mostSig`. It appears that the residuals vs fitted plot has a fit closer to horizontal line 0, in the raw expression model, however the model created with normalized data has a lower p-value from ANOVA. 
+
+However, in the individual boxplot of gene `r mostSig`, we can see that the variance is decreased after normalization. This reduction in variance can lead to more trustworthy results. 
+
+``` {r, eval=TRUE, show=TRUE}
+hist(pValues.norm)
+
+mostSig.index.norm <- which.min(pValues.norm)
+mostSig.norm <- genes[mostSig.index.norm]
+
+leastSig.index.norm <- which.max(pValues.norm)
+leastSig.norm <- genes[leastSig.index.norm]
+```
+
+The gene that showed most significant relationship with age, when model prepared with normalized data, is: `r mostSig.norm`.
+
+``` {r, eval=TRUE,show=TRUE}
+effectAnalysis(experiment, mostSig.norm,"AGE",colData = TRUE, additional = TRUE, assayNum = 2)
+```
+
+The gene that showed the least significant relationship with age, when model prepared with normalized data, is: `r leastSig.norm`
+
+``` {r, eval=TRUE,show=TRUE}
+effectAnalysis(experiment, leastSig.norm,"AGE",colData = TRUE, additional = TRUE, assayNum = 2)
+```
+
+
+### Question 5
+
+```{r, eval=TRUE, show=TRUE}
+mostSig.index.norm <- which.min(pValues.norm)
+mostSig.norm <- genes[mostSig.index.norm]
+
+geneData <- beyondLinear(experiment, mostSig, "AGE", colData = TRUE, method = "NA", dataOnly = TRUE, assayNum=2)
+expressionData <- geneData$expressionData
+metadata <- geneData$metadata
+
+expData.4.pred <- seq(min(expressionData), max(expressionData), length.out=200)
+newdata <- data.frame(expressionData=expData.4.pred)
+
+LOESS.model <- beyondLinear(experiment, mostSig.norm, "AGE", colData = TRUE, method = "LOESS", assayNum=2)
+GAM.model <- beyondLinear(experiment, mostSig.norm, "AGE", colData = TRUE, method = "GAM", assayNum=2)
+linear.model <- beyondLinear(experiment, mostSig.norm, "AGE", colData = TRUE, method = "linear", assayNum=2)
+
+pred.LOESS <- predict(LOESS.model, newdata=newdata)
+pred.GAM <- predict(GAM.model, newdata=newdata)
+pred.linear <- predict(linear.model, newdata=newdata)
+plot(expressionData, metadata, xlab=paste(mostSig, "Expression"), ylab="AGE", main=paste(mostSig.norm, "Expression vs AGE"))
+
+lines(expData.4.pred,pred.LOESS, col="steelblue", lwd=2)
+lines(expData.4.pred,pred.GAM, col="tomato", lwd=2)
+lines(expData.4.pred, pred.linear, col="magenta", lwd=2)
+legend("bottomright",
+       legend=c("LOESS","GAM","Linear"),
+       col=c("steelblue","tomato","magenta"),
+       pch = NA,
+       lty=1)
+
+lm.aic <- AIC(linear.model)
+#LOESS.aic <- AIC(LOESS.model)
+GAM.aic <- AIC(GAM.model)
+
+print(lm.aic)
+print(GAM.aic)
+```
+
+From the visual plot, the "GAM" model follows the data the best. When we evaluate the AIC for the linear and GAM plot, we can see that the GAM model (`r GAM.aic`) has a lower AIC than linear (`r lm.aic`). However, the difference is small, I will perform the rest of the evaluation with the linear model. 
+
+```{r, eval=TRUE, show=TRUE}
+pred.linear <- predict(linear.model)
+plot(pred.linear, expressionData, xlab="Predicted", ylab="Observed", main="Predicted vs Observed for linear model \n modeled from normalized data")
+abline(0,1,lty=2)
+
+resid.linear <- resid(linear.model)
+fitted.linear <- fitted(linear.model)
+
+plot(fitted.linear, resid.linear, xlab="Fitted",ylab="Residuals", main="Fitted vs Observed for linear model \n modeled from normalized data")
+abline(h=0,lty=2)
+
+normalityTest <- shapiro.test(resid.linear)
+normalityTest.pval <- normalityTest$p.value
+```
+
+We can see from the results of the Shapiro-Wilks test indicate we fail to reject the null hypothesis that the residuals of the model are normally distributed (`r normalityTest.pval`). We can thus assume that the model was fitted with wrong assumptions. 
