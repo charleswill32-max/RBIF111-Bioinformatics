@@ -1,0 +1,768 @@
+---
+title: "Week 4 Homework"
+author: "Charles-William Ruel"
+date: "24NOV26"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+  pdf_document:
+    toc: true
+vignette: >
+    %\VignetteIndexEntry{Text}
+    %\usepackage[utf8]{inputenc}
+    %\VignetteEngine{knitr::rmarkdown}
+fontsize: 15pt
+editor_options: 
+  chunk_output_type: console
+---
+
+# Homework 4
+
+## Part A: Simulation foundations
+
+### Question 1
+
+#### Part A
+```{r, eval=TRUE}
+smpl.sizes <- c(1,2,4,8,16,32,64,128)
+n.sim <- 1000
+rate <- 4
+mu <- numeric(length(smpl.sizes))
+sem <- numeric(length(smpl.sizes))
+for (i in 1:length(smpl.sizes)){
+  smpl.size <- smpl.sizes[i]
+  dist <- matrix(rexp(smpl.size * n.sim, rate), nrow=n.sim, ncol = smpl.size)
+  means <- apply(dist, 1, mean)
+  mu[i] <- mean(means)
+  sem[i] <- sd(means)
+}
+
+plot(c(min(smpl.sizes), max(smpl.sizes)), c(min(c(mu, sem)), max(c(mu, sem))), type='n', ylab="Mean and SEM", xlab="Sample Size")
+
+points(smpl.sizes, mu, type="l", lty=2, col='grey')
+points(smpl.sizes, sem, col='steelblue')
+points(smpl.sizes, (sqrt(1/rate**2))/sqrt(smpl.sizes), col="steelblue", type="l")
+
+legend("topright",
+       legend = c("Mean", "Simulated SEM", "Expected SEM"),
+       col=c('grey', "steelblue", "steelblue"),
+       pch=c(NA, 16, NA),
+       lty=c(2,0, 1),
+)
+```
+
+From the plot above, we can observe that the simulated SEM decreases as we increase the sample size used within our simulation. Additionally, this plot demonstrates that the SEM simulation produces similar results to the calculated ones from the equation (σ_z = σ_x/sqrt(n)). 
+
+#### Part B
+
+```{r, eval=TRUE}
+sample.size <- 8
+sample <- rexp(sample.size, rate)
+
+lm <- lm(sample ~ 1)
+
+CI <- confint(lm, level=0.95)
+
+x <- mean(sample)
+sigma <- sd(sample)
+z_0 <- qt((1-0.95)/2, sample.size-1, lower.tail = FALSE)
+
+lower.CI.calc <- (x-z_0*(sigma/sqrt(sample.size)))
+upper.CI.calc <- (x+z_0*(sigma/sqrt(sample.size)))
+
+lower.CI <- CI[, "2.5 %"]
+upper.CI <- CI[, "97.5 %"]
+```
+
+As we can see from the calculations performed above the lower 95% confidence intervals calculated by "confint" and using "x", "sd", z_0" are `r lower.CI` and `r lower.CI.calc`, and the upper 95% confidence interval is `r upper.CI` and `r upper.CI.calc` respectively. 
+
+#### Part C
+
+```{r, eval=TRUE}
+set.seed(1234)
+par(mfrow=c(3,3))
+smpl.sizes <- 2^(0:8)
+n.sim <- 1000
+
+for (sample.size in smpl.sizes){
+  sum.Xn <- numeric(n.sim)
+  for (i in 1:n.sim){
+    sample <- rexp(sample.size, rate)
+    sum.Xn[i] <- sum(sample)
+  }
+  plot(hist(sum.Xn, plot=F), main=paste("n=", sample.size), xlab="Sum(Xn)", ylab="N(sum)")
+}
+par(mfrow=c(1,1))
+```
+
+From the plots above we observe the CLT in action. As we increase the sample size, the observed distributions converge to normal. We start to observe normal distribution with as little as 8 samples, but it sill appears a bit skewed.
+
+### Question 2
+
+#### Part A
+```{r, eval=TRUE}
+smpl.sizes <- c(1,2,4,8,16,32,64,128)
+n.sim <- 1000
+a <- 2
+b <- 5
+mu <- numeric(length(smpl.sizes))
+sem <- numeric(length(smpl.sizes))
+for (i in 1:length(smpl.sizes)){
+  smpl.size <- smpl.sizes[i]
+  dist <- matrix(runif(smpl.size * n.sim, max = b, min=a), nrow=n.sim, ncol = smpl.size)
+  means <- apply(dist, 1, mean)
+  mu[i] <- mean(means)
+  sem[i] <- sd(means)
+}
+
+plot(c(min(smpl.sizes), max(smpl.sizes)), c(min(c(mu, sem)), max(c(mu, sem))), type='n', ylab="Mean and SEM", xlab="Sample Size")
+
+points(smpl.sizes, mu, type="l", lty=2, col='grey')
+points(smpl.sizes, sem, col='steelblue')
+points(smpl.sizes, ((b-a)**2/12)/sqrt(smpl.sizes), col="steelblue", type="l") # This needs to be changed
+
+legend("topright",
+       legend = c("Mean", "Simulated SEM", "Expected SEM"),
+       col=c('grey', "steelblue", "steelblue"),
+       pch=c(NA, 16, NA),
+       lty=c(2,0, 1),
+)
+```
+
+From the plot above, we can observe that the simulated SEM decreases as we increase the sample size used within our simulation. Additionally, this plot demonstrates that the SEM simulation produces similar results to the calculated ones from the equation (σ_z = σ_x/sqrt(n)). 
+
+#### Part B
+
+```{r, eval=TRUE}
+sample.size <- 8
+sample <- runif(sample.size, max=b, min=a)
+
+lm <- lm(sample ~ 1)
+
+CI <- confint(lm, level=0.95)
+
+x <- mean(sample)
+sigma <- sd(sample)
+z_0 <- qt((1-0.95)/2, sample.size-1, lower.tail = FALSE)
+
+lower.CI.calc <- (x-z_0*(sigma/sqrt(sample.size)))
+upper.CI.calc <- (x+z_0*(sigma/sqrt(sample.size)))
+
+lower.CI <- CI[, "2.5 %"]
+upper.CI <- CI[, "97.5 %"]
+```
+
+As we can see from the calculations performed above the lower 95% confidence intervals calculated by "confint" and using "x", "sd", z_0" are `r lower.CI` and `r lower.CI.calc`, and the upper 95% confidence interval is `r upper.CI` and `r upper.CI.calc` respectively. 
+
+#### Part C
+
+```{r, eval=TRUE}
+set.seed(1234)
+par(mfrow=c(3,3))
+smpl.sizes <- 2^(0:8)
+n.sim <- 1000
+
+for (sample.size in smpl.sizes){
+  sum.Xn <- numeric(n.sim)
+  for (i in 1:n.sim){
+    sample <- runif(sample.size, max=b, min=a)
+    sum.Xn[i] <- sum(sample)
+  }
+  plot(hist(sum.Xn, plot=F), main=paste("n=", sample.size), xlab="Sum(Xn)", ylab="N(sum)")
+}
+par(mfrow=c(1,1))
+```
+
+From the plots above we observe the CLT in action. As we increase the sample size, the observed distributions converge to normal. We start to observe normal distribution with as little as 2 samples.
+
+### Question 3
+
+#### Normal Distribution
+
+```{r, eval=TRUE, cache=TRUE}
+set.seed(1234)
+sample.sizes <- seq(2,1000, by=2)
+
+normal.mean <- 0
+exp.mean <- 1
+unif.mean <- 0.5
+
+n.sim <- 1000
+
+#storage vectors
+F.norm.all <- numeric(length(sample.sizes))
+F.exp.all <- numeric(length(sample.sizes))
+F.unif.all <- numeric(length(sample.sizes))
+
+for (i in 1:length(sample.sizes)){
+  sample.size <- sample.sizes[i]
+  
+  mat.norm <- matrix(rnorm(sample.size*n.sim), nrow=n.sim, ncol=sample.size)
+  mat.exp <- matrix(rexp(sample.size*n.sim), nrow=n.sim, ncol=sample.size)
+  mat.unif <- matrix(runif(sample.size*n.sim), nrow=n.sim, ncol=sample.size)
+  
+  #Variables to store if True that mean is in 95% CI
+  T.norm <- 0
+  T.exp <- 0
+  T.unif <- 0
+  
+  for (j in 1:n.sim){
+    #Normal
+    tmp <- mat.norm[j, ]
+    v <- numeric(sample.size)
+    for (g in 1:sample.size){
+      v[g] <- tmp[g]
+    }
+    lm <- lm(v~1)
+    norm.CI <- confint(lm)
+    lower.CI <- norm.CI[, "2.5 %"]
+    upper.CI <- norm.CI[, "97.5 %"]
+    
+    if (lower.CI < normal.mean & normal.mean < upper.CI){
+      T.norm <- T.norm + 1
+    }
+    
+    #Exp
+    tmp <- mat.exp[j, ]
+    v <- numeric(sample.size)
+    for (g in 1:sample.size){
+      v[g] <- tmp[g]
+    }
+    lm <- lm(v~1)
+    exp.CI <- confint(lm)
+    lower.CI <- exp.CI[, "2.5 %"]
+    upper.CI <- exp.CI[, "97.5 %"]
+    
+    if (lower.CI < exp.mean & exp.mean < upper.CI){
+      T.exp <- T.exp + 1
+    }
+    
+    #Unif
+    tmp <- mat.unif[j, ]
+    v <- numeric(sample.size)
+    for (g in 1:sample.size){
+      v[g] <- tmp[g]
+    }
+    lm <- lm(v~1)
+    unif.CI <- confint(lm)
+    lower.CI <- unif.CI[, "2.5 %"]
+    upper.CI <- unif.CI[, "97.5 %"]
+    
+    if (lower.CI < unif.mean & unif.mean < upper.CI){
+      T.unif <- T.unif + 1
+    }    
+    F.norm <- ((n.sim - T.norm)/n.sim)*100
+    F.exp <- ((n.sim - T.exp)/n.sim)*100
+    F.unif <- ((n.sim - T.unif)/n.sim)*100
+    
+    F.norm.all[i] <- F.norm
+    F.exp.all[i] <- F.exp
+    F.unif.all[i] <- F.unif
+  }
+}
+
+max.norm <- max(F.norm.all)
+max.exp <- max(F.exp.all)
+max.unif <- max(F.unif.all)
+
+y.max <- max(c(max.norm, max.exp, max.unif))
+
+min.norm <- min(F.norm.all)
+min.exp <- min(F.exp.all)
+min.unif <- min(F.unif.all)
+
+y.min <- min(c(min.norm, min.exp, min.unif))
+
+plot(c(min(sample.sizes), max(sample.sizes)), c(y.min,y.max), xlab="Sample Size", ylab="Percentage of confidence that do not contain true mean", main="Failures of CI to contain true mean vs sample size \n with varying distribution shapes")
+points(sample.sizes, F.norm.all, col="steelblue", type="l")
+points(sample.sizes, F.exp.all, col="tomato", type="l")
+points(sample.sizes, F.unif.all, col="magenta", type="l")
+abline(h=5, col="black", lty=2)
+legend("topright",
+       title="Distribution Type",
+       legend=c("Normal", "Exponential", "Uniform"),
+       col=c("steelblue", "tomato", "magenta"),
+       pch=NA,
+       lty=1)
+```
+
+The percentage of missed confidence intervals that do not contain the true mean is dependent on both sample size and shape of the distribution. From what we can see in the plot, Percent misses for an exponential distribution start high with low sample sizes and converge to about 5% with increasing n. This is the opposite for uniformly distributed data, per the plot above CI misses start off around 3% and converge to about 5% with increasing sample sizes. Finally, the normal data appears to stay steady around 5% misses. 
+
+We can use the two plots in Q1C and Q2C to explain why the shapes converge to 5%, but do so differently. In Q1C we plot the distribution of sample means, and see that with low n (under ~8), we do not yet observe the CLT. Thus we can apply this to the misses, we see more misses compared to expected due to the skewed nature of data. For the uniform data, this relationship is different with a low sample size we also do not yet observe CLT, but the data is uniformly distributed. This distribution allows for more of the CI to contain true value. 
+
+## Part B: Applying to real data
+
+### Question 4
+
+```{r, eval=TRUE,message=FALSE, warning=FALSE, results='hide'}
+library(DBI)
+library(duckdb)
+library(repoquet)
+library(ggplot2)
+config_path <- "~/Documents/Brandeis/rbif111/homework/database/repoquet_public_example/repository_config.R"
+cfg <- load_repository_config(config_path)
+temp_dir <- file.path(cfg$FormattedDBPath, "duckdb_temp")
+dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
+con <- open_duckdb( FormattedDBPath = cfg$FormattedDBPath, DBName = cfg$DBName, TempDirPath = temp_dir, GB = cfg$DuckDB_GB, ReadOnly = TRUE)
+
+
+uci_tables <- DBI::dbListTables(con)
+data <- uci_tables[512]
+data <- DBI::dbGetQuery(con,paste("SELECT * FROM", data))
+```
+
+``` {r, eval=TRUE}
+M <- data[data$DIAGNOSIS == "M",] # Malignant Tumor Diagnostic
+B <- data[data$DIAGNOSIS == "B",] # Benign Tumor Diagnostic
+
+n.rep <- 1000
+
+lower.CI <- numeric(n.rep)
+upper.CI <- numeric(n.rep)
+
+pop.radius.mean.M <- mean(M$RADIUS1)
+pop.radius.mean.B <- mean(B$RADIUS1)
+pop.delta <- pop.radius.mean.M - pop.radius.mean.B
+
+for (i in 1:n.rep){
+  radius.M <- sample(M$RADIUS1, 30)
+  radius.B <- sample(B$RADIUS1, 30)
+  
+  radius.M.mean <- mean(radius.M)
+  radius.B.mean <- mean(radius.B)
+  
+  delta <- radius.M.mean - radius.B.mean
+  
+  CI <- t.test(radius.M, radius.B)$conf.int
+  
+  lower.CI[i] <- CI[1]
+  upper.CI[i] <- CI[2]
+}
+
+CI.length <- numeric(n.rep)
+T.delta <- 0 # Counter for how many times population mean lies within calculated CI
+
+for (i in 1:n.rep){
+  CI.length[i] <- upper.CI[i] - lower.CI[i]
+  if (lower.CI[i] < pop.delta & pop.delta < upper.CI[i]){
+    T.delta <- T.delta + 1
+  }
+}
+avg.CI.len <- mean(CI.length)
+```
+
+``` {r, eval=TRUE}
+numericalCols <- c(3:31)
+
+CI.length.col <- numeric(length(numericalCols)+1)
+T.delta.col <- numeric(length(numericalCols)+1)
+
+CI.length.col[1] <- avg.CI.len
+T.delta.col[1] <- (T.delta/n.rep)*100
+
+for (col in numericalCols){
+  
+  lower.CI <- numeric(n.rep)
+  upper.CI <- numeric(n.rep)
+
+  pop.mean.M <- mean(M[,col])
+  pop.mean.B <- mean(B[,col])
+  pop.delta <- pop.mean.M - pop.mean.B
+  
+  for (i in 1:n.rep){
+  M.sample <- sample(M[,col], 30)
+  B.sample <- sample(B[,col], 30)
+  
+  M.mean <- mean(M.sample)
+  B.mean <- mean(B.sample)
+  
+  delta <- M.mean - B.mean
+  
+  CI <- t.test(M.sample, B.sample)$conf.int
+  
+  lower.CI[i] <- CI[1]
+  upper.CI[i] <- CI[2]
+}
+
+CI.length <- numeric(n.rep)
+T.delta <- 0 # Counter for how many times population mean lies within calculated CI
+
+for (i in 1:n.rep){
+  CI.length[i] <- upper.CI[i] - lower.CI[i]
+  if (lower.CI[i] < pop.delta & pop.delta < upper.CI[i]){
+    T.delta <- T.delta + 1
+  }
+}
+
+index <- match(col, numericalCols)
+
+avg.CI.len <- mean(CI.length)
+CI.length.col[index+1] <- avg.CI.len
+T.delta.col[index+1] <- (T.delta/n.rep)*100
+}
+
+colNames <- names(data)[2:31]
+
+
+```
+
+```{r, eval=TRUE}
+numericalCols <- c(2:31)
+
+CI.length.col.all <- numeric(length(numericalCols))
+T.delta.col.all <- numeric(length(numericalCols))
+
+CI.length.col[1] <- avg.CI.len
+T.delta.col[1] <- (T.delta/n.rep)*100
+
+for (col in numericalCols){
+
+  M.sample <- M[,col]
+  B.sample <- B[,col]
+  
+  M.mean <- mean(M.sample)
+  B.mean <- mean(B.sample)
+  
+  delta <- M.mean - B.mean
+  
+  CI <- t.test(M.sample, B.sample)$conf.int
+  
+  lower.CI <- CI[1]
+  upper.CI <- CI[2]
+
+CI.length <- numeric(n.rep)
+T.delta <- 0 # Counter for how many times population mean lies within calculated CI
+
+
+CI.length <- upper.CI - lower.CI
+  if (lower.CI < delta & delta < upper.CI){
+    T.delta <- T.delta + 1
+  }
+
+
+index <- match(col, numericalCols)
+
+avg.CI.len <- mean(CI.length)
+CI.length.col.all[index] <- avg.CI.len
+T.delta.col.all[index] <- (T.delta/1)*100
+}
+
+df <- data.frame("Column Name" = colNames,
+                    "Average CI Length" = CI.length.col,
+                    "Proportion population mean found in CI" = T.delta.col,
+                 "CI Length No Sample" = CI.length.col.all,
+                 "Proportion population mean found in CI No Sample" = T.delta.col.all
+                 )
+
+ggplot(df, aes(x = Column.Name, )) + geom_hline(yintercept=95, col="black", linetype = "dashed") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + geom_col(aes(y=Proportion.population.mean.found.in.CI.No.Sample, fill="Not Sampled"), position="identity") + geom_col(aes(y = Proportion.population.mean.found.in.CI, fill="Sampled (n=30)"), position = "identity") + labs(title = "Comparison of proportion of population means \n found in confidence intervals",x = "Measurement Variable",y = "Proportion of population mean found in repeated CI calculations",fill = "Confidence Interval")
+
+```
+
+From the plots above we can observe that in the case where the confidence intervals are calculated with a sample (n=30), about 95% of the calculated CI will contain the population mean. This differs from when the CI are calculated based off of non-sampled data about 100% of the the CI will contain the population mean. This is because when we calculate CI with an entire population data they are no longer random variables.
+
+```{r, eval=TRUE}
+ggplot(df, aes(x=Column.Name)) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + geom_col(aes(y=Average.CI.Length, fill="Sampled (n=30"), position="identity") + geom_col(aes(y=CI.Length.No.Sample, fill="Not Sampled"), position="identity", width=0.5) + scale_y_log10()+   labs(title = "Comparison of Confidence Interval Lengths",x = "Measurement Variable",y = "Confidence Interval Length (log10 scale)",fill = "Confidence Interval")
+```
+
+In the plots above, we can observe how the confidence interval width varies based on column data. Note that the y-axis is in log10 form here, since some of the CI widths are much larger. Particularly when the observed data is larger magnitude than other data (area and perimeter vs radius). Additionally, note how the width of confidence intervals shifts with increased sample sizes, non-sample calculated CI had smaller widths compared to sampled CI. 
+
+Finally, when we compare both lots, notice how regardless of confidence interval width, when we repeatedly calculate CI, about 95% of the time we observe the true population mean in the CI. 
+
+### Question 5
+
+``` {r,message=FALSE, warning=FALSE, results='hide'}
+GEODataDownload <- function(DS, gpl, gsm, PlateAnnotInfo, GenerateMetaData, Technology, CountsFile = NULL){
+  library(DESeq2); library(limma); library(data.table)
+  if(Technology == "Array"){
+    gset <- getGEO(DS, GSEMatrix = TRUE, getGPL = FALSE)
+    if(length(gset) == 1) {
+      idx <- 1
+    } else {
+      idx <- grep(gpl, attr(gset, "names"))
+    }
+    
+    if(length(idx) != 1) {
+      stop("Could not uniquely identify the requested GPL platform.")
+    }
+    
+    gset <- gset[[idx]]
+    print(gset)
+    ex <- SummarizedExperiment::assay(gset)
+    Pdat <- as.data.frame(SummarizedExperiment::colData(gset))
+    print(Pdat)
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up raw names ####
+    sml <- c()
+    for(i in 1:nchar(gsms)){ sml[i] <- substr(gsms,i,i)}
+    qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+    LogC <- (qx[5] > 100) ||
+      (qx[6]-qx[1] > 50 && qx[2] > 0) ||
+      (qx[2] > 0 && qx[2] < 1 && qx[4] < 2)
+    if(LogC){ ex[which(ex <= 0)] <- NaN
+    ex <- log2(ex) }
+    print(ex)
+    sml <- paste("G", sml, sep="")
+    f1 <- as.factor(sml)
+    design <- model.matrix(~f1 + 0)
+    colnames(design) <- levels(f1)
+    fit <- lmFit(ex, design)
+    cont.matrix <- makeContrasts(G1-G0, levels = design)
+    fit2 <- contrasts.fit(fit, cont.matrix)
+    fit2 <- eBayes(fit2, 0.01)
+    tT <- topTable(fit2, adjust="fdr", sort.by = "B", number = 25000000000)
+    #### subset ####
+    tT$ID <- rownames(tT)
+    ex2 <- data.table(subset(tT, select=c("ID", "logFC", "P.Value", "adj.P.Val")))
+    ex2$ID <- as.character(ex2$ID)
+    #### annotate with gene names ####
+    plat <- PlateAnnotInfo[GPLID == gpl,][,!"GPLID", with = FALSE]
+    if(nrow(plat) == 0){ print(paste("There is no annotation information available for", gpl)) }
+    plat$ID <- as.character(plat$ID)
+    plat <- plat[!duplicated(plat$ID),]
+    ex2 <- merge(plat, ex2, by = "ID")
+    ex2$ID <- as.character(ex2$ID)
+    exraw <- data.table(ex)
+    exraw$ID <- as.character(rownames(ex))
+    #### annotate raw data with gene names ####
+    ex2 <- merge(ex2, exraw, by = "ID")
+    #### Generate Meta Data ####
+    #### Add Meta data ####
+    return(list(Data = ex2, MetaData = Pdat))
+  }
+  
+  if(Technology == "RNAseq"){
+    ACC <- paste("acc=", DS, sep = "")
+    file <- paste("file=", DS, "_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep = "")
+    comp <- gsub(" ", "", gsm)
+    comp <- gsub(",", "", comp)
+    gsms <- paste0(comp)
+    #### Set up DEG names ####
+    urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+    path <- paste(urld, ACC, file, sep="&");
+    if(is.null(CountsFile)) CountsFile <- path
+    cts <- data.table::fread(CountsFile, header=T)
+    tbl <- as.matrix(cts, rownames="GeneID")
+    exraw <- tbl
+    #### Gene annotation from AnnotationHub (GEO GeneIDs are NCBI Entrez IDs) ####
+    library(AnnotationHub)
+    ah <- AnnotationHub()
+    orgdbs <- query(ah, c("OrgDb", "Homo sapiens"))
+    orgdb <- orgdbs[[tail(names(orgdbs), 1)]]
+    annot <- suppressMessages(AnnotationDbi::select(orgdb, keys = rownames(tbl), keytype = "ENTREZID", columns = c("SYMBOL", "GENENAME")))
+    annot <- annot[!duplicated(annot$ENTREZID), ]
+    annot <- data.frame(GeneID = as.integer(annot$ENTREZID), Symbol = annot$SYMBOL, Description = annot$GENENAME)
+    rownames(annot) <- annot$GeneID
+    sml <- strsplit(gsms, split="")[[1]]
+    sel <- which(sml != "X")
+    sml <- sml[sel]
+    tbl <- tbl[ ,sel]
+    gs <- factor(sml)
+    groups <- make.names(c("Ctrl", "Tx"))
+    levels(gs) <- groups
+    sample_info <- data.frame(Group = gs, row.names = colnames(tbl))
+    keep <- rowSums( tbl >= 10 ) >= min(table(gs))
+    tbl <- tbl[keep, ]
+    ds <- DESeqDataSetFromMatrix(countData=tbl, colData=sample_info, design= ~Group)
+    ds <- DESeq(ds, test="Wald", sfType="poscount")
+    r <- results(ds, contrast=c("Group", groups[2], groups[1]), alpha=0.05, pAdjustMethod ="fdr")
+    tT <- r[order(r$padj)[1:length(r$padj)],]
+    tT <- merge(as.data.frame(tT), annot, by=0, sort=F)
+    tT <- subset(tT, select=c("GeneID","padj","pvalue","lfcSE","stat","log2FoldChange","baseMean","Symbol","Description"))
+    #### subset ####
+    ex2 <- data.table(subset(tT, select=c("GeneID", "Symbol", "Description", "log2FoldChange", "pvalue", "padj")))
+    #### Adjust column names ####
+    setnames(ex2, c("GeneID", "Symbol", "Description"), c("ENTREZID", "SYMBOL", "GENENAME"))
+    #### Get Raw data ####
+    GeneID <- as.integer(rownames(exraw))
+    exraw <- as.data.table(exraw)
+    #### Update column names ####
+    exraw$ENTREZID <- GeneID
+    #### merge FC and raw data together ####
+    mer <- merge(ex2, exraw, by = "ENTREZID")
+    return(mer)
+  }
+}
+
+RNAseq <- GEODataDownload("GSE207821", "GPL18573","00001111111","Only needed if the data was generated using MicroArrays","Only needed if the data was generated using MicroArrays","RNAseq")
+
+
+library(SummarizedExperiment)
+library(mgcv)
+metadata <- read.csv("SraRunTable.csv")
+
+rawExpression <- as.matrix(RNAseq[,c(7:17)])
+
+
+geneMetadata <- data.frame(
+  SYMBOL = RNAseq[,2],
+  log2FoldChange = RNAseq[,4],
+  padj = RNAseq[,6]
+)
+
+metadata <- metadata[match(colnames(rawExpression), metadata$Sample.Name), ]
+geneIDs <- make.unique(as.character(RNAseq[,1]$ENTREZID))
+rownames(rawExpression) <- geneIDs
+rownames(geneMetadata) <- geneIDs
+rownames(metadata) <- metadata$GEO_Accession..exp.
+#Now lets combine everything above into a summarizedExperiment object
+
+experiment <- SummarizedExperiment(assays = list(
+    raw_counts = rawExpression)
+  , rowData = geneMetadata, colData = metadata)
+```
+
+```{r, eval=TRUE}
+age <- colData(experiment)$AGE
+geneData <- assay(experiment)
+geneData <- as.data.frame(geneData)
+geneData$Gene <- rowData(experiment)$SYMBOL
+geneData <- geneData[,c("Gene", setdiff(names(geneData), "Gene"))]
+
+geneCount <- length(geneData$Gene)
+
+lower.CI <- numeric(geneCount)
+upper.CI <- numeric(geneCount)
+p.val <- numeric(geneCount)
+geneName <- character(geneCount)
+
+for (i in 1:geneCount){
+  geneName[i] <- geneData[i,1]
+  expressionData <- geneData[i, -1]
+  df <- rbind(expressionData, age)
+  df <- t(df)
+  colnames(df) <- c("Expression.Data", "Age")
+  df <- as.data.frame(df)
+  
+  fit <- lm(Age ~ Expression.Data, df)
+  CI <- confint(fit)
+  
+  lower.CI[i] <- CI["Expression.Data", "2.5 %"]
+  upper.CI[i] <- CI["Expression.Data", "97.5 %"]
+  p.val[i] <- anova(fit)$"Pr(>F)"[1]
+}
+
+df <- data.frame("Gene" = geneName,
+                 "Lower CI" = lower.CI,
+                 "Upper CI" = upper.CI,
+                 "CI Length" = (upper.CI - lower.CI),
+                 "Model p-value" = p.val)
+
+df <- df[order(df$Model.p.value),]
+
+ggplot(df) + aes(x= reorder(Gene, Model.p.value), y = 0) + geom_errorbar(aes(ymin = Lower.CI, ymax = Upper.CI))+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank()) + labs(title="Confidence Interval of model expression coef \n vs Model p-value", y = "Confidence Interval", x="Genes (Sorted by p-value ascending)")
+
+largest.Rel <- df[1,]
+smallest.Rel <- df[geneCount,]
+
+# Largest Relationship (Smallest p-value)
+L.name <- largest.Rel$Gene
+L.lower <- largest.Rel$Lower.CI
+L.upper <- largest.Rel$Upper.CI
+L.width <- largest.Rel$CI.Length
+L.pval <- largest.Rel$Model.p.value
+
+# Smallest relationship (Largest p-value)
+S.name <- smallest.Rel$Gene
+S.lower <- smallest.Rel$Lower.CI
+S.upper <- smallest.Rel$Upper.CI
+S.width <- smallest.Rel$CI.Length
+S.pval <- smallest.Rel$Model.p.value
+```
+
+For the gene with the most significant p-value in a model between expression and age of patients with brain aging. This gene , `r L.name` (p-value: `r L.pval`), has a CI width of `r L.width` witha lower value of `r L.lower` to upper value `r L.upper`. For the gene with the smallest calculated relationship, `r S.name` (p-value `r S.pval`), a CI width of `r S.width` with a lower value at `r S.lower` to upper value `r S.upper`. 
+
+The values above tell us that for `r L.name`, the true expression coefficient is within the 95% CI if we repeatadly resampled. Additionally, the range of this CI all falls below zero, and we can say that with increasing age `r L.name` has reduced expression. Additionally, the CI range for smallest relationship gene, `r S.name`, is near 0 indicating low relationship between age and gene expression. Even though the most significant relationship gene has a larger CI width, it is still a more significant models as the entire CI range is away from zero.
+
+### Question 6
+
+```{r, eval=TRUE,message=FALSE, warning=FALSE, results='hide'}
+library(forecast)
+library(tseries)
+config_path <- "~/Documents/Brandeis/rbif111/homework/database/repoquet_public_example/repository_config.R"
+cfg <- load_repository_config(config_path)
+temp_dir <- file.path(cfg$FormattedDBPath, "duckdb_temp")
+dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
+con <- open_duckdb( FormattedDBPath = cfg$FormattedDBPath, DBName = cfg$DBName, TempDirPath = temp_dir, GB = cfg$DuckDB_GB, ReadOnly = TRUE)
+
+
+uci_tables <- DBI::dbListTables(con)
+data <- uci_tables[543]
+data <- DBI::dbGetQuery(con,paste("SELECT * FROM", data))
+```
+
+#### Part A
+
+```{r, eval=TRUE}
+# First I will seperate out the data to only be observations made on one joint from one leg of the same patient (number 1).
+
+data <- data[data$SUBJECT == "1",]
+L1 <- data[data$LEG == "1",]
+J2 <- L1[L1$JOINT == "2",]    #I did check and for patient 1, Leg 1 and Leg 2 have same no of observations, and J1, J2, J3 have same number within Leg 1. Additioally, I will be selecting data from only when the knee is brced (condition 2)
+data <- J2[J2$CONDITION == "2",]
+
+data$CONTINUOUS_TIME <- (data$REPLICATION - 1) * 101 + data$TIME #Looking at the documentation for this database, we can see that 10 replicates were collected for each condition for each patient. To build a series I am adding the gait cycles (T 0 -> 100 is 0% -> 100% gait) repititional together.
+
+measurements <- data$ANGLE
+measurements.ts <- ts(measurements, frequency = 101) #As explained above time is broken down from 0-100% in 1% intervals. Thus we know frequency is 101 per gait repititions.
+
+time <- data$CONTINUOUS_TIME
+
+stl.fit <- stl(measurements.ts, s.window = "periodic")
+plot(stl.fit)
+```
+
+Here we know that the seasonal component to our data is a frequency of 101, since the gait cycle is measured in 1% increments between 0 and 100%. Additionally, we stitched multiple gaits together. 
+
+#### Part B
+```{r, eval=TRUE}
+adf.result <- adf.test(as.numeric(measurements.ts))
+adf.pval <- adf.result$p.value
+
+cat("ADF test p-value:", round(adf.result$p.value, 4),
+    "-- series is", ifelse(adf.result$p.value < 0.05, "stationary", "non-stationary"), "\n")
+
+if (adf.pval <= 0.05){
+  measurements.diff <- diff(measurements)
+  par(mfrow=c(2,1))
+  plot(measurements, xlab="Completed Gait Cycles", ylab="Knee Measured Angle", main="Braed Knee angle measurements over 10 completed gaits")
+  plot(measurements.diff, xlab="Completed Gait Cycles", ylab="Knee Measured Angle", main="Braed Knee angle measurements over 10 completed gaits")
+}
+```
+
+Stationary data means that the data is not decreasing or increasing between similar time points of different periods. It is important to test if data is stationairy or not before fitting an ARIMA model since if data is not stationary and we do not differentiate the data, this will affect the model we produce from ARIMA. 
+
+#### Part C
+
+```{r, eval=TRUE}
+components <- stl.fit$time.series
+trend.comp <- components[, "trend"]
+seasonal.comp <- components[, "seasonal"]
+remainder.comp <- components[, "remainder"]
+
+par(mfrow=c(1,2))
+
+acf(remainder.comp,  lag.max = 20, main = "ACF: STL remainder")
+pacf(remainder.comp, lag.max = 20, main = "PACF: STL remainder")
+
+par(mfrow=c(1,1))
+# From the plot we see that ACF degrades gradually, and PACF cuts out around lag 0.3. Thinking this model will be AR(0)?
+
+arima.fit <- auto.arima(measurements.ts, seasonal = TRUE)
+summary(arima.fit)
+gait.fc <- forecast(arima.fit, h=101, level=0.95)
+plot(gait.fc, main="Next complete Gait cycle forecast \n with 95% Prediction Interval", fcol = "steelblue", shadecols = "tomato", ylab="Knee Measured Angle",xlab="Completed Gait Cycles")
+legend("bottomleft",
+       legend = c("Observed", "Forecast", "95% Prediction Interval"),
+       col = c("black", "steelblue", "tomato"),
+       lty = c(1, 1, NA),
+       lwd = c(2, 2, NA),
+       pch = NA,
+       fill = c(NA, NA, "tomato"),
+       bty = "n")
+```
+
+By observing the plot in part A, the forecasted gait makes sense. It follows the same general trend, and we can observe that the largest 95% PI occurs in areas with large remainders.
