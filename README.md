@@ -27,6 +27,7 @@ Assignment information will be updated as course progresses.
 |Assignment 1|Develop basic working experience with R programming, data exploration, reproducible reporting, and scalable data management.|R, RStudio|
 |Assignment 2|Explore the notion of chance and how it applies to significance measures, and understand the role of the assumptions made by specific tests|R, RStudio|
 |Assignment 3|Develop working knowledge of linear models in R: fitting them, reading diagnostic plots, and judging when a model is (or is not) correctly specified.|R, Rstudio|
+|Assignment 4|Develop working knowledge of confidence intervals, the Central Limit Theorem, the standard error of the mean, and time series analysis, and their implementation in R|R, RStudio|
 ## Technology
 R <br>
 RStudio <br>
